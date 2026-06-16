@@ -1,0 +1,32 @@
+// FutureBoxes — Core TypeScript Types
+
+export type BoxType = 'message' | 'goal' | 'memory' | 'decision';
+export type BoxStatus = 'locked' | 'ready_to_open' | 'opened';
+
+export interface Box {
+  id: string;
+  boxType: BoxType;
+  title?: string;
+  content: string;
+  openingNote?: string;
+  reflectionQuestion?: string;
+  reflectionAnswer?: 'yes' | 'no' | null;
+  imagePath?: string;
+  unlockDate: string; // ISO date string
+  createdAt: string;  // ISO date string
+  openedAt?: string;  // ISO date string
+  notificationIdentifier?: string;
+  status: BoxStatus;
+}
+
+export interface BoxTypeConfig {
+  type: BoxType;
+  label: string;
+  color: string;
+  bgColor: string;
+  iconName: string;
+  iconFamily: 'Ionicons' | 'MaterialCommunityIcons';
+  contentPlaceholder: string;
+  defaultReflectionQuestion: string;
+  shortLabel: string;
+}

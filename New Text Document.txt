@@ -1,0 +1,29 @@
+Dự án dùng SDK 56, nhưng Expo Go chỉ hỗ trợ đến SDK 54 → phải downgrade project.
+
+---
+Các bước downgrade về SDK 54
+
+1. package.json — đổi toàn bộ versions:
+- expo: ~54.0.0, react-native: 0.81.5, react: 19.1.0
+- expo-router: ~6.0.24, react-native-reanimated: ~4.1.1
+- react-native-worklets: 0.5.2 ← version này tương thích RN 0.81.5
+- babel-preset-expo: ~54.0.10, typescript: ~5.9.2
+- Thêm @babel/core: ^7.25.0 vào devDependencies
+
+2. app.json — xóa "expo-status-bar" khỏi plugins (SDK 54 không có plugin này)
+
+3. tsconfig.json — xóa "ignoreDeprecations": "6.0" (chỉ dùng cho TS 6)
+
+4. Reinstall:
+npm install --legacy-peer-deps
+
+5. Chạy:
+npx expo start --clear
+
+---
+Lưu ý quan trọng
+
+- react-native-worklets@0.9.2 ❌ — yêu cầu RN 0.83-0.86, không chạy với RN 0.81.5
+- react-native-worklets@0.5.2 ✅ — hỗ trợ mọi RN version
+- expo-status-bar không có config plugin trong SDK 54 → phải bỏ khỏi plugins[]
+- Phải kill Node processes trước khi xóa node_modules trên Windows
