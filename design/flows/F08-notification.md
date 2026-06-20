@@ -4,11 +4,13 @@
 Liên quan: F-08 | AC: AC-08.1, AC-08.2, AC-08.3, AC-08.4
 Thư viện: **expo-notifications** (SDK 54), trigger `SchedulableTriggerInputTypes.DATE`
 
+> **Sprint 3 / F-31 update:** ngoài notification ngày mở (`kind='unlock'`), app schedule thêm curiosity notification ở các mốc `teaser_30d`, `teaser_7d`, `teaser_1d` nếu mốc đó còn strictly trong tương lai. Nội dung là câu mẫu cố định, không chèn title/content/teaser_text của hộp. Payload mọi notification là `{ boxId, kind }`. Khi xóa hộp phải hủy tất cả identifier của hộp.
+
 ---
 
 ## 1. Mục tiêu tính năng
 
-Khi tạo hộp, lên lịch một thông báo cục bộ vào đúng ngày mở. Khi hộp bị xóa, hủy thông báo tương ứng. Khi người dùng nhấn vào thông báo, mở app đi thẳng tới hộp đó.
+Khi tạo hộp, lên lịch thông báo cục bộ cho ngày mở và các mốc curiosity hợp lệ trước ngày mở. Khi hộp bị xóa, hủy toàn bộ thông báo tương ứng. Khi người dùng nhấn vào thông báo, mở app đi thẳng tới hộp đó theo trạng thái hiện tại của hộp.
 
 ## 2. Người dùng tương tác trên app như thế nào
 
@@ -58,12 +60,23 @@ flowchart TD
 
 ## 4. Chi tiết kỹ thuật (cho agent-react)
 
+### 4.1. Notification kind và nội dung cố định
+
+| kind | scheduled_for | body |
+|------|---------------|------|
+| `teaser_30d` | `unlockDate - 30 ngày` | "Một gợi ý mới vừa được mở trong hộp tương lai của bạn. ✨" |
+| `teaser_7d` | `unlockDate - 7 ngày` | "Chỉ còn 7 ngày nữa. Bạn còn nhớ mình đã viết gì không? 🤔" |
+| `teaser_1d` | `unlockDate - 1 ngày` | "Ngày mai hộp của bạn sẽ mở. Có hồi hộp không? 🎁" |
+| `unlock` | `unlockDate` | "Một hộp thời gian đã sẵn sàng mở! 📦" |
+
+Chỉ schedule các mốc có `scheduled_for > now`. Title luôn là `FutureBoxes`.
+
 | Hạng mục | Chi tiết |
 |----------|----------|
 | Trigger | `{ type: Notifications.SchedulableTriggerInputTypes.DATE, date: new Date(unlock_date) }` |
-| Payload | `content.data = { boxId }` để điều hướng khi nhấn (AC-08.2) |
+| Payload | `content.data = { boxId, kind }` để điều hướng khi nhấn; `kind` gồm `unlock`, `teaser_30d`, `teaser_7d`, `teaser_1d` |
 | Android channel | Tạo channel 1 lần lúc khởi tạo app (vd `box-ready`, importance HIGH) |
-| Lấy lại id để hủy | Đọc `notification_identifier` từ bảng `notification_schedule` theo `box_id` |
+| Lấy lại id để hủy | Đọc tất cả `notification_identifier` từ bảng `notification_schedule` theo `box_id` |
 | Cold start navigation | Dùng `getLastNotificationResponseAsync()` lúc app boot để xử lý mở app từ thông báo khi app đã tắt |
 | Listener cleanup | `addNotificationResponseReceivedListener(...)` phải `.remove()` khi unmount |
 
