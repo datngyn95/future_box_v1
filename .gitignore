@@ -39,3 +39,9 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# scratch / review artifacts
+agent-dev-diff.txt
+new 2.txt
+new 3.txt
+*.diff
