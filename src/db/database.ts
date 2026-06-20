@@ -25,7 +25,7 @@ export async function initDatabase(): Promise<void> {
  * KHÔNG sửa migration cũ đã release.
  */
 export async function migrateDbIfNeeded(db: SQLite.SQLiteDatabase): Promise<void> {
-  const DATABASE_VERSION = 5;
+  const DATABASE_VERSION = 6;
 
   const row = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
   let currentVersion = row?.user_version ?? 0;
@@ -174,6 +174,42 @@ export async function migrateDbIfNeeded(db: SQLite.SQLiteDatabase): Promise<void
       PRAGMA foreign_keys = ON;
     `);
     currentVersion = 5;
+  }
+
+  if (currentVersion === 5) {
+    await db.execAsync(`
+      PRAGMA foreign_keys = OFF;
+
+      CREATE TABLE box_new (
+        id            TEXT PRIMARY KEY NOT NULL,
+        box_type      TEXT NOT NULL CHECK (box_type IN ('Message','Goal','Memory','Decision','Secret','Challenge','Letter')),
+        title         TEXT,
+        content       TEXT NOT NULL,
+        opening_note  TEXT,
+        image_path    TEXT,
+        created_at    TEXT NOT NULL,
+        unlock_date   TEXT NOT NULL,
+        is_opened     INTEGER NOT NULL DEFAULT 0 CHECK (is_opened IN (0,1)),
+        opened_at     TEXT,
+        is_deleted    INTEGER NOT NULL DEFAULT 0 CHECK (is_deleted IN (0,1))
+      );
+
+      INSERT INTO box_new
+        (id, box_type, title, content, opening_note, image_path, created_at, unlock_date, is_opened, opened_at, is_deleted)
+      SELECT id, box_type, title, content, opening_note, image_path, created_at, unlock_date, is_opened, opened_at, is_deleted
+      FROM box;
+
+      DROP TABLE box;
+      ALTER TABLE box_new RENAME TO box;
+
+      CREATE INDEX IF NOT EXISTS idx_box_unlock_date ON box (unlock_date);
+      CREATE INDEX IF NOT EXISTS idx_box_is_opened   ON box (is_opened);
+      CREATE INDEX IF NOT EXISTS idx_box_type        ON box (box_type);
+      CREATE INDEX IF NOT EXISTS idx_box_list        ON box (is_deleted, is_opened, unlock_date);
+
+      PRAGMA foreign_keys = ON;
+    `);
+    currentVersion = 6;
   }
 
   await db.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);

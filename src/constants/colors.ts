@@ -20,6 +20,12 @@ export const Colors = {
     memoryBg: T.accentSoft,
     decision: T.accent,
     decisionBg: T.accentSoft,
+    secret: T.accent,
+    secretBg: T.accentSoft,
+    challenge: T.accent,
+    challengeBg: T.accentSoft,
+    letter: T.accent,
+    letterBg: T.accentSoft,
   },
 
   // Primary brand → accent cam

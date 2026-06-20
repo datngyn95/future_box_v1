@@ -32,7 +32,7 @@ export function computeStats(boxes: Box[]): PersonalStats {
       }
 
       if (
-        box.boxType === 'goal' &&
+        (box.boxType === 'goal' || box.boxType === 'challenge') &&
         status === 'opened' &&
         (box.reflectionAnswer === 'yes' || box.reflectionAnswer === 'no')
       ) {

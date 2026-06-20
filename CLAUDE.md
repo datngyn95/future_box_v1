@@ -132,10 +132,16 @@ RootLayout (BoxProvider → AppGuard)
 - `upsertReflectionNote` must only touch `reflection_note`, `rating`, and `updated_at`; it must not change `question_text`, `answer`, `answered_at`, or original box content/image/opening note.
 - F-35 CTA is rendered at the end of opened `box/[id]/detail.tsx` and navigates to `/create-box`; it is inline in the ScrollView, not a blocking modal.
 
+### Sprint 8 / F-37 New Box Types
+
+- SQLite DB version 6 rebuilds `box` from v5 to v6 to widen `box_type` CHECK from `Message|Goal|Memory|Decision` to `Message|Goal|Memory|Decision|Secret|Challenge|Letter`.
+- Migration v5->v6 copies every existing `box` row and column, drops/renames with `PRAGMA foreign_keys = OFF`, recreates `idx_box_unlock_date`, `idx_box_is_opened`, `idx_box_type`, and `idx_box_list`, then turns FK checks back on.
+- F-37 adds `secret`, `challenge`, and `letter` only as `BoxType` values plus TypeScript config/templates. Do not add separate tables, columns, per-type flows, or encryption/PIN behavior for Secret.
+
 
 **Sprint 3 / F-31 update:** SQLite hiện là **DB version 3**. Migration v2→v3 rebuild `notification_schedule` để bỏ `UNIQUE(box_id)` và thêm `kind TEXT NOT NULL DEFAULT 'unlock' CHECK (kind IN ('unlock','teaser_30d','teaser_7d','teaser_1d'))`. Một box có thể có tối đa 4 row notification: `teaser_30d`, `teaser_7d`, `teaser_1d`, `unlock`; chỉ các mốc còn trong tương lai mới được schedule. `deleteBox` phải hủy tất cả `notification_identifier` của box rồi dựa vào FK `ON DELETE CASCADE` để xóa row DB.
 
-**SQLite schema** (DB version 5, file: `futureboxes.db`):
+**SQLite schema** (DB version 6, file: `futureboxes.db`):
 
 | Bảng | Mô tả |
 |------|-------|
@@ -179,4 +185,5 @@ function getBoxStatus(box, now): BoxStatus
 - **Post-open Reflection (F-34)**: reflection note + rating 1-5 are optional and editable only after open. UI renders only in opened detail; repository writes are guarded by `BOX_NOT_OPENED`. Reflection is independent from Yes/No answer and original content remains read-only.
 - **Create Next Box CTA (F-35)**: opened detail ends with inline CTA "Tạo hộp mới cho tương lai" -> `/create-box`; keep EmpathyCard CTA for the "No" answer path.
 - **Personal Stats (F-36)**: `app/stats.tsx` is read-only and computes all values from `state.boxes` through `src/utils/stats.ts` + `getBoxStatus`. F-36 has no DB migration, no notification changes, and no data mutation. Stats must not render locked box content, image, opening note, reflection note text, reflection answer details, prediction text, or teaser text; only counts plus public metadata for the next locked box (title, type, unlock date, countdown). Empty state navigates to `/create-box`.
+- **New Box Types (F-37)**: Secret/Challenge/Letter share the existing `box` table and generic create/lock/open/detail flow. They are template/config additions only, must follow the same locked-content rule as all other box types, and must not introduce separate DB tables, separate business logic, account/cloud/public sharing, or Secret-specific encryption/PIN behavior.
 - Không cho sửa nội dung sau khi khóa; chỉ cho xóa (theo Q7 PRD)
