@@ -28,6 +28,9 @@ export interface Box {
   openingNote?: string;
   reflectionQuestion?: string;
   reflectionAnswer?: 'yes' | 'no' | null;
+  reflectionNote?: string;
+  reflectionRating?: number;
+  reflectionUpdatedAt?: string;
   imagePath?: string;
   unlockDate: string; // ISO date string
   createdAt: string;  // ISO date string

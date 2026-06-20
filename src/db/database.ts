@@ -25,7 +25,7 @@ export async function initDatabase(): Promise<void> {
  * KHÔNG sửa migration cũ đã release.
  */
 export async function migrateDbIfNeeded(db: SQLite.SQLiteDatabase): Promise<void> {
-  const DATABASE_VERSION = 4;
+  const DATABASE_VERSION = 5;
 
   const row = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
   let currentVersion = row?.user_version ?? 0;
@@ -145,6 +145,35 @@ export async function migrateDbIfNeeded(db: SQLite.SQLiteDatabase): Promise<void
       CREATE INDEX IF NOT EXISTS idx_box_prediction_box_id ON box_prediction (box_id);
     `);
     currentVersion = 4;
+  }
+
+  if (currentVersion === 4) {
+    await db.execAsync(`
+      PRAGMA foreign_keys = OFF;
+
+      CREATE TABLE reflection_question_new (
+        id              TEXT PRIMARY KEY NOT NULL,
+        box_id          TEXT NOT NULL UNIQUE,
+        question_text   TEXT,
+        answer          TEXT CHECK (answer IN ('yes','no')),
+        answered_at     TEXT,
+        reflection_note TEXT,
+        rating          INTEGER CHECK (rating IS NULL OR (rating BETWEEN 1 AND 5)),
+        updated_at      TEXT,
+        FOREIGN KEY (box_id) REFERENCES box(id) ON DELETE CASCADE
+      );
+
+      INSERT INTO reflection_question_new
+        (id, box_id, question_text, answer, answered_at)
+      SELECT id, box_id, question_text, answer, answered_at
+      FROM reflection_question;
+
+      DROP TABLE reflection_question;
+      ALTER TABLE reflection_question_new RENAME TO reflection_question;
+
+      PRAGMA foreign_keys = ON;
+    `);
+    currentVersion = 5;
   }
 
   await db.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);

@@ -42,9 +42,12 @@ interface BoxRow {
 interface ReflectionRow {
   id: string;
   box_id: string;
-  question_text: string;
+  question_text: string | null;
   answer: string | null;
   answered_at: string | null;
+  reflection_note: string | null;
+  rating: number | null;
+  updated_at: string | null;
 }
 
 interface NotificationRow {
@@ -106,6 +109,9 @@ function rowToBox(
     notificationIdentifier: notification?.notification_identifier ?? undefined,
     reflectionQuestion: reflection?.question_text ?? undefined,
     reflectionAnswer: (reflection?.answer as 'yes' | 'no' | null) ?? undefined,
+    reflectionNote: reflection?.reflection_note ?? undefined,
+    reflectionRating: reflection?.rating ?? undefined,
+    reflectionUpdatedAt: reflection?.updated_at ?? undefined,
     prediction: prediction ? rowToPrediction(prediction) : undefined,
     teasers,
     status,
@@ -143,6 +149,18 @@ function normalizeTeaserTexts(teasers?: string[]): string[] {
 
 function normalizePredictionText(text: string): string {
   return text.trim().slice(0, 500);
+}
+
+function normalizeReflectionNote(text?: string): string {
+  return (text ?? '').trim().slice(0, 1000);
+}
+
+function normalizeReflectionRating(rating?: number | null): number | null {
+  if (rating === undefined || rating === null) return null;
+  if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+    throw new Error('INVALID_REFLECTION_RATING');
+  }
+  return rating;
 }
 
 export function computeTeaserUnlockAts(
@@ -516,6 +534,62 @@ export async function upsertPrediction(
   );
 
   return saved ? rowToPrediction(saved) : null;
+}
+
+export async function upsertReflectionNote(
+  boxId: string,
+  input: { note?: string; rating?: number | null },
+): Promise<Pick<Box, 'reflectionNote' | 'reflectionRating' | 'reflectionUpdatedAt'>> {
+  const db = await getDatabase();
+  await db.execAsync('PRAGMA foreign_keys = ON');
+
+  const box = await db.getFirstAsync<{ id: string; is_opened: number }>(
+    'SELECT id, is_opened FROM box WHERE id = ? AND is_deleted = 0',
+    boxId,
+  );
+
+  if (!box || box.is_opened !== 1) {
+    throw new Error('BOX_NOT_OPENED');
+  }
+
+  const normalizedNote = normalizeReflectionNote(input.note);
+  const reflectionNote = normalizedNote.length > 0 ? normalizedNote : null;
+  const reflectionRating = normalizeReflectionRating(input.rating);
+  const now = new Date().toISOString();
+
+  const existing = await db.getFirstAsync<{ id: string }>(
+    'SELECT id FROM reflection_question WHERE box_id = ?',
+    boxId,
+  );
+
+  if (existing) {
+    await db.runAsync(
+      `UPDATE reflection_question
+       SET reflection_note = ?, rating = ?, updated_at = ?
+       WHERE box_id = ?`,
+      reflectionNote,
+      reflectionRating,
+      now,
+      boxId,
+    );
+  } else {
+    await db.runAsync(
+      `INSERT INTO reflection_question
+         (id, box_id, question_text, answer, answered_at, reflection_note, rating, updated_at)
+       VALUES (?, ?, NULL, NULL, NULL, ?, ?, ?)`,
+      generateUUID(),
+      boxId,
+      reflectionNote,
+      reflectionRating,
+      now,
+    );
+  }
+
+  return {
+    reflectionNote: reflectionNote ?? undefined,
+    reflectionRating: reflectionRating ?? undefined,
+    reflectionUpdatedAt: now,
+  };
 }
 
 /**
