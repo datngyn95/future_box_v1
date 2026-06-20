@@ -113,19 +113,19 @@ function GoalCard({ completed, total }: { completed: number; total: number }) {
         <View style={styles.sectionIcon}>
           <Ionicons name="flag" size={18} color={ThemeColors.accent} />
         </View>
-        <Text style={styles.sectionTitle}>Mục tiêu hoàn thành</Text>
+        <Text style={styles.sectionTitle}>Mục tiêu/thử thách hoàn thành</Text>
       </View>
 
       {total > 0 ? (
         <>
           <Text style={styles.bigRatio}>{completed}/{total}</Text>
-          <Text style={styles.cardDescription}>mục tiêu đã được đánh dấu hoàn thành</Text>
+          <Text style={styles.cardDescription}>mục tiêu/thử thách đã được đánh dấu hoàn thành</Text>
           <View style={styles.progressTrack}>
             <View style={[styles.progressFill, { width: `${Math.round(progress * 100)}%` }]} />
           </View>
         </>
       ) : (
-        <Text style={styles.emptyLine}>Chưa có mục tiêu nào để đối chiếu.</Text>
+        <Text style={styles.emptyLine}>Chưa có mục tiêu/thử thách nào để đối chiếu.</Text>
       )}
     </View>
   );

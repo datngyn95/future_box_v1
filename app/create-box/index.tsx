@@ -10,6 +10,7 @@ import {
   Pressable,
   Dimensions,
   Platform,
+  ScrollView,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -46,6 +47,9 @@ const BOX_TYPE_DESCRIPTIONS: Record<BoxType, string> = {
   goal: 'Đặt và theo dõi mục tiêu',
   memory: 'Lưu khoảnh khắc đáng nhớ',
   decision: 'Ghi lại quyết định quan trọng',
+  secret: 'Cất giữ một bí mật',
+  challenge: 'Đặt thử thách cho bản thân',
+  letter: 'Viết thư cho tương lai',
 };
 
 function BoxTypeCard({ type, enterDelay, onPress }: BoxTypeCardProps) {
@@ -118,8 +122,8 @@ export default function SelectBoxTypeScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
 
-  const boxTypes: BoxType[] = ['message', 'goal', 'memory', 'decision'];
-  const staggerDelays = [0, 75, 150, 225];
+  const boxTypes: BoxType[] = ['message', 'goal', 'memory', 'decision', 'secret', 'challenge', 'letter'];
+  const staggerDelays = [0, 75, 150, 225, 300, 375, 450];
 
   const handleSelectType = (type: BoxType) => {
     router.push(`/create-box/${type}`);
@@ -141,7 +145,11 @@ export default function SelectBoxTypeScreen() {
       </View>
 
       {/* ── Content ── */}
-      <View style={styles.content}>
+      <ScrollView
+        style={styles.contentScroll}
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+      >
         {/* Instruction */}
         <View style={styles.instructionContainer}>
           <Text style={styles.instructionTitle}>Bạn muốn tạo loại hộp gì?</Text>
@@ -161,7 +169,7 @@ export default function SelectBoxTypeScreen() {
             />
           ))}
         </View>
-      </View>
+      </ScrollView>
     </View>
   );
 }
@@ -200,10 +208,14 @@ const styles = StyleSheet.create({
   },
 
   // Content
-  content: {
+  contentScroll: {
     flex: 1,
+  },
+  content: {
+    flexGrow: 1,
     paddingHorizontal: Spacing[4],
     paddingTop: Spacing[4],
+    paddingBottom: Spacing[6],
   },
 
   // Instruction

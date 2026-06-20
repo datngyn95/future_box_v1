@@ -1,6 +1,13 @@
 // FutureBoxes — Core TypeScript Types
 
-export type BoxType = 'message' | 'goal' | 'memory' | 'decision';
+export type BoxType =
+  | 'message'
+  | 'goal'
+  | 'memory'
+  | 'decision'
+  | 'secret'
+  | 'challenge'
+  | 'letter';
 export type BoxStatus = 'locked' | 'ready_to_open' | 'opened';
 
 export interface BoxTeaser {
