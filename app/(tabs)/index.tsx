@@ -664,6 +664,13 @@ export default function HomeScreen() {
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.headerButton}
+            onPress={() => router.push('/stats')}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="bar-chart-outline" size={22} color={Colors.textPrimary} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.headerButton}
             onPress={() => router.push('/settings')}
             activeOpacity={0.7}
           >
