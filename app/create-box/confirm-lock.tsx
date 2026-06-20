@@ -46,6 +46,18 @@ function formatViDate(isoString: string): string {
   }
 }
 
+function parseTeasersParam(value?: string): string[] {
+  if (!value) return [];
+
+  try {
+    const parsed = JSON.parse(value);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((item): item is string => typeof item === 'string');
+  } catch {
+    return [];
+  }
+}
+
 export default function ConfirmLockScreen() {
   const {
     boxType,
@@ -55,6 +67,7 @@ export default function ConfirmLockScreen() {
     reflectionQuestion,
     unlockDate,
     imagePath,
+    teasers,
   } = useLocalSearchParams<{
     boxType: string;
     title: string;
@@ -63,12 +76,14 @@ export default function ConfirmLockScreen() {
     reflectionQuestion: string;
     unlockDate: string;
     imagePath?: string;
+    teasers?: string;
   }>();
 
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const config = getBoxTypeConfig(boxType as BoxType);
   const { dispatch } = useBoxStore();
+  const parsedTeasers = parseTeasersParam(teasers);
 
   const [isLocking, setIsLocking] = useState(false);
   const [visible, setVisible] = useState(true);
@@ -122,6 +137,7 @@ export default function ConfirmLockScreen() {
         reflectionQuestion: reflectionQuestion || undefined,
         imagePath: imagePath || undefined,
         unlockDate: unlockDate ?? new Date().toISOString(),
+        teasers: parsedTeasers,
       });
 
       dispatch({ type: 'ADD_BOX', payload: box });
@@ -162,6 +178,7 @@ export default function ConfirmLockScreen() {
                       reflectionQuestion: reflectionQuestion || undefined,
                       imagePath: undefined,
                       unlockDate: unlockDate ?? new Date().toISOString(),
+                      teasers: parsedTeasers,
                     });
                     dispatch({ type: 'ADD_BOX', payload: box });
                     router.replace({

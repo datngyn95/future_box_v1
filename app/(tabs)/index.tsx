@@ -71,6 +71,13 @@ function formatDate(dateString: string): string {
   return date.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
+function hasUnlockedTeaser(box: Box): boolean {
+  const now = Date.now();
+  return (box.teasers ?? []).some((teaser) =>
+    new Date(teaser.unlockAt).getTime() <= now,
+  );
+}
+
 // ─── Glass surface ────────────────────────────────────────────────────────────
 // Lớp kính dùng chung: BlurView + tint trắng mờ + viền sáng. Đặt làm nền tuyệt đối,
 // nội dung render đè lên trên. Container cha cần overflow:'hidden' + borderRadius.
@@ -178,6 +185,7 @@ function LockedCard({ box, onPress }: { box: Box; onPress: () => void }) {
   const config = getBoxTypeConfig(box.boxType);
   const daysRemaining = getDaysRemaining(box.unlockDate);
   const progress = getProgressPercent(box.createdAt, box.unlockDate);
+  const showTeaserBadge = hasUnlockedTeaser(box);
 
   const scale = useSharedValue(1);
   const pressStyle = useAnimatedStyle(() => ({
@@ -214,6 +222,12 @@ function LockedCard({ box, onPress }: { box: Box; onPress: () => void }) {
             </View>
             <AnimatedProgressBar progress={progress} />
             <Text style={styles.unlockDateText}>Mở vào {formatDate(box.unlockDate)}</Text>
+            {showTeaserBadge && (
+              <View style={styles.teaserBadge}>
+                <Ionicons name="sparkles-outline" size={12} color={ThemeColors.accent} />
+                <Text style={styles.teaserBadgeText}>Có gợi ý mới</Text>
+              </View>
+            )}
           </View>
           <Ionicons name="chevron-forward" size={20} color={ThemeColors.textMuted} />
         </View>
@@ -977,6 +991,22 @@ const styles = StyleSheet.create({
     fontSize: FontSize.sm,
     color: Colors.textMuted,
     marginTop: 3,
+  },
+  teaserBadge: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: Spacing[2],
+    paddingVertical: 4,
+    borderRadius: Radius.full,
+    backgroundColor: ThemeColors.accentSoft,
+    marginTop: Spacing[2],
+  },
+  teaserBadgeText: {
+    fontSize: FontSize.xs,
+    fontWeight: FontWeight.semiBold,
+    color: ThemeColors.accent,
   },
 
   // Opened card

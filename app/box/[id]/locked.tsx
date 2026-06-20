@@ -117,6 +117,13 @@ export default function LockedBoxPeekScreen() {
   }
 
   const displayTitle = box.title || config.label;
+  const teaserNow = Date.now();
+  const teasers = box.teasers ?? [];
+  const unlockedTeasers = teasers.filter(
+    (teaser) => new Date(teaser.unlockAt).getTime() <= teaserNow,
+  );
+  const waitingTeaserCount = teasers.length - unlockedTeasers.length;
+  const isBoxStillLocked = !box.openedAt && teaserNow < new Date(box.unlockDate).getTime();
 
   return (
     <View style={[styles.root, { backgroundColor: Colors.background }]}>
@@ -196,6 +203,35 @@ export default function LockedBoxPeekScreen() {
             Nội dung hộp đang được bảo vệ đến ngày mở.
           </Text>
         </View>
+
+        {isBoxStillLocked && teasers.length > 0 && (
+          <View style={styles.teaserSection}>
+            <View style={styles.teaserHeader}>
+              <Ionicons name="sparkles-outline" size={18} color={config.color} />
+              <Text style={styles.teaserTitle}>Gợi ý đã mở khóa</Text>
+            </View>
+
+            {unlockedTeasers.length > 0 ? (
+              <View style={styles.teaserList}>
+                {unlockedTeasers.map((teaser) => (
+                  <View key={teaser.id} style={styles.teaserCard}>
+                    <Text style={styles.teaserText}>{teaser.teaserText}</Text>
+                  </View>
+                ))}
+              </View>
+            ) : (
+              <Text style={styles.teaserHint}>
+                Một vài gợi ý sẽ xuất hiện khi gần đến ngày mở...
+              </Text>
+            )}
+
+            {waitingTeaserCount > 0 && (
+              <Text style={styles.teaserWaitingText}>
+                Còn {waitingTeaserCount} gợi ý đang chờ
+              </Text>
+            )}
+          </View>
+        )}
 
         <TouchableOpacity
           style={styles.deleteButton}
@@ -324,6 +360,49 @@ const styles = StyleSheet.create({
     fontSize: FontSize.md,
     color: Colors.textSecondary,
     flex: 1,
+  },
+
+  teaserSection: {
+    width: '100%',
+    backgroundColor: Colors.surface,
+    borderRadius: Radius.md,
+    padding: Spacing[4],
+    marginTop: Spacing[2],
+  },
+  teaserHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing[2],
+    marginBottom: Spacing[3],
+  },
+  teaserTitle: {
+    fontSize: FontSize.lg,
+    fontWeight: FontWeight.semiBold,
+    color: Colors.textPrimary,
+  },
+  teaserList: {
+    gap: Spacing[2],
+  },
+  teaserCard: {
+    backgroundColor: Colors.surfaceSecondary,
+    borderRadius: Radius.md,
+    paddingHorizontal: Spacing[3],
+    paddingVertical: Spacing[3],
+  },
+  teaserText: {
+    fontSize: FontSize.md,
+    color: Colors.textPrimary,
+    lineHeight: FontSize.md * 1.45,
+  },
+  teaserHint: {
+    fontSize: FontSize.md,
+    color: Colors.textSecondary,
+    lineHeight: FontSize.md * 1.45,
+  },
+  teaserWaitingText: {
+    fontSize: FontSize.sm,
+    color: Colors.textMuted,
+    marginTop: Spacing[3],
   },
 
   deleteButton: {

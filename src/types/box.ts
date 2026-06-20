@@ -3,6 +3,15 @@
 export type BoxType = 'message' | 'goal' | 'memory' | 'decision';
 export type BoxStatus = 'locked' | 'ready_to_open' | 'opened';
 
+export interface BoxTeaser {
+  id: string;
+  boxId: string;
+  teaserText: string;
+  unlockAt: string;
+  isSystemGenerated: boolean;
+  createdAt: string;
+}
+
 export interface Box {
   id: string;
   boxType: BoxType;
@@ -16,6 +25,7 @@ export interface Box {
   createdAt: string;  // ISO date string
   openedAt?: string;  // ISO date string
   notificationIdentifier?: string;
+  teasers?: BoxTeaser[];
   status: BoxStatus;
 }
 

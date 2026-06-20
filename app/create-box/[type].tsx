@@ -282,6 +282,7 @@ export default function CreateBoxFormScreen() {
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [openingNote, setOpeningNote] = useState('');
+  const [teasers, setTeasers] = useState(['', '', '']);
   const [reflectionEnabled, setReflectionEnabled] = useState(false);
   const [reflectionQuestion, setReflectionQuestion] = useState(
     config.defaultReflectionQuestion,
@@ -390,6 +391,12 @@ export default function CreateBoxFormScreen() {
     setImageUri(null);
   }, []);
 
+  const handleTeaserChange = (index: number, text: string) => {
+    setTeasers((current) => current.map((item, itemIndex) =>
+      itemIndex === index ? text : item,
+    ));
+  };
+
   // ─── Date Picker (F-02) ───────────────────────────────────────────────────
 
   const handleCustomDatePress = () => {
@@ -432,7 +439,12 @@ export default function CreateBoxFormScreen() {
   // ─── Form helpers ─────────────────────────────────────────────────────────
 
   const hasFormData = (): boolean => {
-    return title.trim().length > 0 || content.trim().length > 0 || openingNote.trim().length > 0;
+    return (
+      title.trim().length > 0 ||
+      content.trim().length > 0 ||
+      openingNote.trim().length > 0 ||
+      teasers.some((teaser) => teaser.trim().length > 0)
+    );
   };
 
   const handleBack = () => {
@@ -496,6 +508,7 @@ export default function CreateBoxFormScreen() {
         reflectionQuestion: reflectionEnabled ? reflectionQuestion.trim() : '',
         unlockDate: unlockDate!.toISOString(),
         imagePath: imageUri ?? '',
+        teasers: JSON.stringify(teasers),
       },
     });
   };
@@ -581,6 +594,26 @@ export default function CreateBoxFormScreen() {
               style={[styles.textInput, styles.multilineInput, { minHeight: 72 }]}
               scrollEnabled={false}
             />
+          </AccordionSection>
+
+          <AccordionSection
+            title="GỢI Ý BÍ ẨN"
+            icon="sparkles-outline"
+            subtitle="Những gợi ý nhỏ sẽ xuất hiện trước ngày mở hộp."
+            defaultExpanded={false}
+          >
+            {teasers.map((teaser, index) => (
+              <AnimatedInput
+                key={index}
+                label={`GỢI Ý ${index + 1}`}
+                value={teaser}
+                onChangeText={(text) => handleTeaserChange(index, text)}
+                placeholder="Viết một mảnh gợi nhớ ngắn..."
+                maxLength={160}
+                accentColor={config.color}
+                returnKeyType="next"
+              />
+            ))}
           </AccordionSection>
 
           {/* Reflection Question Toggle */}
