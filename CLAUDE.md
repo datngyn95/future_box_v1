@@ -51,6 +51,7 @@
 │   │       ├── pre-open.tsx    # Pre-open Screen (F-06, guard check, "Mở hộp" CTA)
 │   │       └── detail.tsx      # Opened Box Detail Screen (F-07, F-11, F-14, F-34/F-35, confetti, empathy)
 │   ├── settings.tsx            # Settings Screen (App Lock, Change PIN, Biometric)
+│   ├── stats.tsx               # Personal Stats Screen (F-36, read-only local stats)
 │   └── auth/
 │       └── set-pin.tsx         # Set/Change PIN (3 steps: enter → confirm → biometric offer)
 │
@@ -76,8 +77,10 @@
 │   │   ├── hapticsService.ts     # safe expo-haptics wrapper for optional feedback
 │   │   ├── settingsService.ts  # isAppLockEnabled, isOnboardingDone, LOCK_TIMEOUT_MS (AsyncStorage)
 │   │   └── authService.ts      # setPIN/verifyPIN (SHA-256+salt), biometric (expo-local-authentication)
-│   └── store/
-│       └── boxStore.tsx        # BoxProvider (Context), useBoxStore() hook, reducer
+│   ├── store/
+│   │   └── boxStore.tsx        # BoxProvider (Context), useBoxStore() hook, reducer
+│   └── utils/
+│       └── stats.ts            # computeStats() for Personal Stats (F-36)
 │
 ├── assets/                     # App icons, splash screen
 ├── design/                     # Tài liệu thiết kế (screens.md, flows/, database/schema.md, uiuxguides.md)
@@ -104,6 +107,7 @@ RootLayout (BoxProvider → AppGuard)
 │   ├── pre-open            → Pre-open Screen ("Mở hộp" CTA, guard)
 │   └── detail              → Opened Box Detail (content, confetti, reflection, F-14 stagger)
 ├── settings                → Settings Screen (App Lock, Change PIN, Biometric)
+├── stats                   → Personal Stats (F-36), entry from Home header
 └── auth/set-pin            → Set/Change PIN (3 steps)
 ```
 
@@ -174,4 +178,5 @@ function getBoxStatus(box, now): BoxStatus
 - **Opening Ritual (F-33)**: `box/[id]/pre-open.tsx` follows persist -> animate -> navigate. `openBox` runs before `OpeningRitualOverlay`; navigation is guarded by `hasNavigatedRef` and a safety timer so animation callbacks cannot hang or double-navigate. Haptics go through `hapticsService` and must remain optional/silent on unsupported devices. The ritual overlay only receives `boxType` and must not render content, image, opening note, reflection answer, or prediction. F-33 does not change DB schema or migrations.
 - **Post-open Reflection (F-34)**: reflection note + rating 1-5 are optional and editable only after open. UI renders only in opened detail; repository writes are guarded by `BOX_NOT_OPENED`. Reflection is independent from Yes/No answer and original content remains read-only.
 - **Create Next Box CTA (F-35)**: opened detail ends with inline CTA "Tạo hộp mới cho tương lai" -> `/create-box`; keep EmpathyCard CTA for the "No" answer path.
+- **Personal Stats (F-36)**: `app/stats.tsx` is read-only and computes all values from `state.boxes` through `src/utils/stats.ts` + `getBoxStatus`. F-36 has no DB migration, no notification changes, and no data mutation. Stats must not render locked box content, image, opening note, reflection note text, reflection answer details, prediction text, or teaser text; only counts plus public metadata for the next locked box (title, type, unlock date, countdown). Empty state navigates to `/create-box`.
 - Không cho sửa nội dung sau khi khóa; chỉ cho xóa (theo Q7 PRD)
