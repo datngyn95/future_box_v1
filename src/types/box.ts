@@ -12,6 +12,14 @@ export interface BoxTeaser {
   createdAt: string;
 }
 
+export interface BoxPrediction {
+  id: string;
+  boxId: string;
+  predictionText: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
 export interface Box {
   id: string;
   boxType: BoxType;
@@ -26,6 +34,7 @@ export interface Box {
   openedAt?: string;  // ISO date string
   notificationIdentifier?: string;
   teasers?: BoxTeaser[];
+  prediction?: BoxPrediction;
   status: BoxStatus;
 }
 

@@ -1,7 +1,7 @@
 // Locked Box Peek Screen — xem metadata hộp đang khóa (F-03, F-15)
 // Tuyệt đối không hiển thị nội dung — chỉ metadata (AC-03.1)
 
-import React, { useCallback, useEffect } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,9 @@ import {
   TouchableOpacity,
   Alert,
   ScrollView,
+  KeyboardAvoidingView,
+  Platform,
+  TextInput,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -28,7 +31,7 @@ import { FontSize, FontWeight } from '../../../src/constants/typography';
 import { getBoxTypeConfig } from '../../../src/constants/boxTypes';
 import { BoxIcon } from '../../../src/components/BoxIcon';
 import { useBoxStore } from '../../../src/store/boxStore';
-import { deleteBox } from '../../../src/db/boxRepository';
+import { deleteBox, upsertPrediction } from '../../../src/db/boxRepository';
 
 function getDaysRemaining(unlockDate: string): number {
   const now = new Date();
@@ -67,6 +70,9 @@ export default function LockedBoxPeekScreen() {
 
   const countdownScale = useSharedValue(0.5);
   const progressWidth = useSharedValue(0);
+  const [predictionText, setPredictionText] = useState('');
+  const [isSavingPrediction, setIsSavingPrediction] = useState(false);
+  const [predictionSaved, setPredictionSaved] = useState(false);
 
   useEffect(() => {
     countdownScale.value = withSpring(1, { damping: 12, stiffness: 200 });
@@ -75,6 +81,11 @@ export default function LockedBoxPeekScreen() {
       easing: Easing.out(Easing.quad),
     });
   }, []);
+
+  useEffect(() => {
+    setPredictionText(box?.prediction?.predictionText ?? '');
+    setPredictionSaved(false);
+  }, [box?.id, box?.prediction?.predictionText]);
 
   const countdownStyle = useAnimatedStyle(() => ({
     transform: [{ scale: countdownScale.value }],
@@ -108,6 +119,28 @@ export default function LockedBoxPeekScreen() {
     );
   }, [box, dispatch, router]);
 
+  const handleSavePrediction = useCallback(async () => {
+    if (!box || isSavingPrediction) return;
+    setIsSavingPrediction(true);
+    try {
+      const prediction = await upsertPrediction(box.id, predictionText);
+      dispatch({
+        type: 'UPDATE_BOX',
+        payload: { ...box, prediction: prediction ?? undefined },
+      });
+      setPredictionText(prediction?.predictionText ?? '');
+      setPredictionSaved(true);
+    } catch (error) {
+      const message =
+        error instanceof Error && error.message === 'BOX_NOT_EDITABLE'
+          ? 'Dự đoán đã khóa sau khi hộp mở.'
+          : 'Không lưu được dự đoán, thử lại.';
+      Alert.alert('Lỗi', message);
+    } finally {
+      setIsSavingPrediction(false);
+    }
+  }, [box, dispatch, isSavingPrediction, predictionText]);
+
   if (!box || !config) {
     return (
       <View style={[styles.root, styles.center]}>
@@ -126,7 +159,10 @@ export default function LockedBoxPeekScreen() {
   const isBoxStillLocked = !box.openedAt && teaserNow < new Date(box.unlockDate).getTime();
 
   return (
-    <View style={[styles.root, { backgroundColor: Colors.background }]}>
+    <KeyboardAvoidingView
+      style={[styles.root, { backgroundColor: Colors.background }]}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
       <LinearGradient
         colors={[config.bgColor, Colors.background]}
         style={[styles.hero, { paddingTop: insets.top }]}
@@ -165,6 +201,7 @@ export default function LockedBoxPeekScreen() {
           { paddingBottom: insets.bottom + Spacing[8] },
         ]}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
       >
         <Animated.View style={[styles.countdownContainer, countdownStyle]}>
           <Text style={[styles.countdownNumber, { color: config.color }]}>
@@ -233,6 +270,51 @@ export default function LockedBoxPeekScreen() {
           </View>
         )}
 
+        {!box.openedAt && (
+          <View style={styles.predictionSection}>
+            <View style={styles.predictionHeader}>
+              <Ionicons name="chatbubble-ellipses-outline" size={18} color={config.color} />
+              <Text style={styles.predictionTitle}>Dự đoán của bạn</Text>
+            </View>
+            <TextInput
+              style={styles.predictionInput}
+              value={predictionText}
+              onChangeText={(value) => {
+                setPredictionText(value.slice(0, 500));
+                setPredictionSaved(false);
+              }}
+              placeholder="Bạn nghĩ bên trong hộp này là gì?"
+              placeholderTextColor={Colors.textMuted}
+              multiline
+              maxLength={500}
+              textAlignVertical="top"
+            />
+            <View style={styles.predictionFooter}>
+              <Text style={styles.predictionCount}>{predictionText.length}/500</Text>
+              {predictionSaved && (
+                <Text style={[styles.predictionSavedText, { color: config.color }]}>
+                  Đã lưu
+                </Text>
+              )}
+            </View>
+            <TouchableOpacity
+              style={[
+                styles.savePredictionButton,
+                { backgroundColor: config.color },
+                isSavingPrediction && styles.savePredictionButtonDisabled,
+              ]}
+              onPress={handleSavePrediction}
+              activeOpacity={0.85}
+              disabled={isSavingPrediction}
+            >
+              <Ionicons name="save-outline" size={18} color={Colors.textOnColor} />
+              <Text style={styles.savePredictionText}>
+                {isSavingPrediction ? 'Đang lưu...' : 'Lưu dự đoán'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
         <TouchableOpacity
           style={styles.deleteButton}
           onPress={handleDelete}
@@ -242,7 +324,7 @@ export default function LockedBoxPeekScreen() {
           <Text style={styles.deleteButtonText}>Xóa hộp</Text>
         </TouchableOpacity>
       </ScrollView>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -403,6 +485,72 @@ const styles = StyleSheet.create({
     fontSize: FontSize.sm,
     color: Colors.textMuted,
     marginTop: Spacing[3],
+  },
+
+  predictionSection: {
+    width: '100%',
+    backgroundColor: Colors.surface,
+    borderRadius: Radius.md,
+    padding: Spacing[4],
+    marginTop: Spacing[2],
+    borderWidth: 1,
+    borderColor: Colors.borderLight,
+  },
+  predictionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing[2],
+    marginBottom: Spacing[3],
+  },
+  predictionTitle: {
+    fontSize: FontSize.lg,
+    fontWeight: FontWeight.semiBold,
+    color: Colors.textPrimary,
+  },
+  predictionInput: {
+    minHeight: 112,
+    borderWidth: 1,
+    borderColor: Colors.borderLight,
+    borderRadius: Radius.md,
+    paddingHorizontal: Spacing[3],
+    paddingVertical: Spacing[3],
+    fontSize: FontSize.md,
+    color: Colors.textPrimary,
+    backgroundColor: Colors.surfaceSecondary,
+    lineHeight: FontSize.md * 1.45,
+  },
+  predictionFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    minHeight: 28,
+    marginTop: Spacing[2],
+  },
+  predictionCount: {
+    fontSize: FontSize.sm,
+    color: Colors.textMuted,
+  },
+  predictionSavedText: {
+    fontSize: FontSize.sm,
+    fontWeight: FontWeight.semiBold,
+  },
+  savePredictionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing[2],
+    minHeight: 48,
+    paddingHorizontal: Spacing[4],
+    borderRadius: Radius.md,
+    marginTop: Spacing[2],
+  },
+  savePredictionButtonDisabled: {
+    opacity: 0.6,
+  },
+  savePredictionText: {
+    fontSize: FontSize.md,
+    fontWeight: FontWeight.semiBold,
+    color: Colors.textOnColor,
   },
 
   deleteButton: {
