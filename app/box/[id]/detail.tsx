@@ -35,7 +35,7 @@ import { Spacing, Radius, Shadow } from '../../../src/constants/spacing';
 import { FontSize, FontWeight } from '../../../src/constants/typography';
 import { getBoxTypeConfig } from '../../../src/constants/boxTypes';
 import { BoxIcon } from '../../../src/components/BoxIcon';
-import { useBoxStore } from '../../../src/store/boxStore';
+import { getBoxStatus, useBoxStore } from '../../../src/store/boxStore';
 import { answerReflectionQuestion } from '../../../src/db/boxRepository';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -239,6 +239,7 @@ export default function OpenedBoxDetailScreen() {
 
   const box = state.boxes.find((b) => b.id === id);
   const config = box ? getBoxTypeConfig(box.boxType) : null;
+  const status = box ? getBoxStatus(box) : null;
 
   const firstOpen = isFirstOpen === '1';
 
@@ -254,6 +255,16 @@ export default function OpenedBoxDetailScreen() {
     box?.reflectionAnswer === null || box?.reflectionAnswer === undefined,
   );
   const [imageError, setImageError] = useState(false);
+
+  useEffect(() => {
+    if (!box || !status || status === 'opened') return;
+
+    if (status === 'ready_to_open') {
+      router.replace(`/box/${box.id}/pre-open`);
+    } else {
+      router.replace(`/box/${box.id}/locked`);
+    }
+  }, [box, router, status]);
 
   // Stagger fade-in + slide-up for content sections (F-14)
   const section1Opacity = useSharedValue(0);
@@ -335,6 +346,10 @@ export default function OpenedBoxDetailScreen() {
         <Text style={styles.errorText}>Không tìm thấy hộp</Text>
       </View>
     );
+  }
+
+  if (status !== 'opened') {
+    return <View style={[styles.root, { backgroundColor: Colors.background }]} />;
   }
 
   const displayTitle = box.title || config.label;

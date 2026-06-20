@@ -3,9 +3,9 @@ import { AppState, AppStateStatus } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 
-import { BoxProvider, useBoxStore } from '../src/store/boxStore';
+import { BoxProvider, getBoxStatus, useBoxStore } from '../src/store/boxStore';
 import { initDatabase } from '../src/db/database';
-import { getAllBoxes } from '../src/db/boxRepository';
+import { getAllBoxes, getBoxById } from '../src/db/boxRepository';
 import {
   setupNotificationHandler,
   addNotificationResponseListener,
@@ -32,8 +32,25 @@ function AppInit() {
   useEffect(() => {
     setupNotificationHandler();
 
-    const subscription = addNotificationResponseListener((boxId) => {
-      router.push(`/box/${boxId}/pre-open`);
+    const subscription = addNotificationResponseListener(async (boxId) => {
+      try {
+        const box = await getBoxById(boxId);
+        if (!box) {
+          router.replace('/');
+          return;
+        }
+
+        const status = getBoxStatus(box);
+        if (status === 'opened') {
+          router.push(`/box/${box.id}/detail`);
+        } else if (status === 'ready_to_open') {
+          router.push(`/box/${box.id}/pre-open`);
+        } else {
+          router.push(`/box/${box.id}/locked`);
+        }
+      } catch {
+        router.replace('/');
+      }
     });
 
     async function init() {
@@ -55,7 +72,7 @@ function AppInit() {
     return () => {
       subscription.remove();
     };
-  }, []);
+  }, [dispatch, router]);
 
   return null;
 }

@@ -358,11 +358,24 @@ export async function deleteBox(id: string): Promise<void> {
 export async function openBox(id: string): Promise<void> {
   const db = await getDatabase();
   const now = new Date().toISOString();
-  await db.runAsync(
-    'UPDATE box SET is_opened = 1, opened_at = ? WHERE id = ? AND is_opened = 0',
+  const result = await db.runAsync(
+    `UPDATE box
+     SET is_opened = 1, opened_at = ?
+     WHERE id = ?
+       AND is_deleted = 0
+       AND is_opened = 0
+       AND unlock_date <= ?`,
     now,
     id,
+    now,
   );
+
+  if (result.changes === 0) {
+    const box = await getBoxById(id);
+    if (!box) throw new Error('BOX_NOT_FOUND');
+    if (box.openedAt) return;
+    throw new Error('BOX_NOT_READY');
+  }
 }
 
 /**
