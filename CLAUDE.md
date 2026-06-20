@@ -108,9 +108,18 @@ RootLayout (BoxProvider → AppGuard)
 
 ### Data Layer
 
+### Sprint 4 / F-32 Prediction
+
+- SQLite DB version 4 adds `box_prediction` with `box_id UNIQUE`, FK `ON DELETE CASCADE`, and `idx_box_prediction_box_id`.
+- Migration v3->v4 is additive only: `CREATE TABLE IF NOT EXISTS` + `CREATE INDEX IF NOT EXISTS`; no drop/alter/rebuild of older tables.
+- Prediction is optional, max 500 characters, max 1 active row per box, entered only on `box/[id]/locked.tsx` after box creation.
+- Prediction can be freely edited while `is_opened = 0`; after opening it is read-only in Detail and `upsertPrediction` throws `BOX_NOT_EDITABLE` for direct writes.
+- Locked screen must not render original `content`, `image_path`, `opening_note`, or `reflection_question`; it may render only user-entered prediction plus existing metadata/teasers.
+
+
 **Sprint 3 / F-31 update:** SQLite hiện là **DB version 3**. Migration v2→v3 rebuild `notification_schedule` để bỏ `UNIQUE(box_id)` và thêm `kind TEXT NOT NULL DEFAULT 'unlock' CHECK (kind IN ('unlock','teaser_30d','teaser_7d','teaser_1d'))`. Một box có thể có tối đa 4 row notification: `teaser_30d`, `teaser_7d`, `teaser_1d`, `unlock`; chỉ các mốc còn trong tương lai mới được schedule. `deleteBox` phải hủy tất cả `notification_identifier` của box rồi dựa vào FK `ON DELETE CASCADE` để xóa row DB.
 
-**SQLite schema** (DB version 3, file: `futureboxes.db`):
+**SQLite schema** (DB version 4, file: `futureboxes.db`):
 
 | Bảng | Mô tả |
 |------|-------|
@@ -118,6 +127,7 @@ RootLayout (BoxProvider → AppGuard)
 | `reflection_question` | Câu hỏi Yes/No tùy chọn, quan hệ 1-1 với box |
 | `notification_schedule` | Ánh xạ box ↔ notification identifier để hủy khi xóa |
 | `box_teaser` | Mystery teaser F-30, quan hệ nhiều-1 với box, FK `ON DELETE CASCADE` |
+| `box_prediction` | Prediction Before Opening F-32, optional 0..1 per box, FK `ON DELETE CASCADE`, read-only after open |
 
 Trạng thái hộp **không lưu cứng** vào DB — được tính toán (derived) trong code:
 ```ts

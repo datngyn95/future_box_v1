@@ -9,7 +9,7 @@ import {
   cancelBoxNotification,
   scheduleCuriosityNotifications,
 } from '../services/notificationService';
-import { Box, BoxStatus, BoxTeaser, BoxType } from '../types/box';
+import { Box, BoxPrediction, BoxStatus, BoxTeaser, BoxType } from '../types/box';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -65,6 +65,14 @@ interface TeaserRow {
   created_at: string;
 }
 
+interface PredictionRow {
+  id: string;
+  box_id: string;
+  prediction_text: string;
+  created_at: string;
+  updated_at: string | null;
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function generateUUID(): string {
@@ -79,6 +87,7 @@ function rowToBox(
   row: BoxRow,
   reflection: ReflectionRow | null,
   notification: NotificationRow | null,
+  prediction: PredictionRow | null,
   teasers: BoxTeaser[] = [],
 ): Box {
   // Status placeholder — sẽ được tính lại bởi getBoxStatus() trong store
@@ -97,6 +106,7 @@ function rowToBox(
     notificationIdentifier: notification?.notification_identifier ?? undefined,
     reflectionQuestion: reflection?.question_text ?? undefined,
     reflectionAnswer: (reflection?.answer as 'yes' | 'no' | null) ?? undefined,
+    prediction: prediction ? rowToPrediction(prediction) : undefined,
     teasers,
     status,
   };
@@ -113,12 +123,26 @@ function rowToTeaser(row: TeaserRow): BoxTeaser {
   };
 }
 
+function rowToPrediction(row: PredictionRow): BoxPrediction {
+  return {
+    id: row.id,
+    boxId: row.box_id,
+    predictionText: row.prediction_text,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at ?? undefined,
+  };
+}
+
 function normalizeTeaserTexts(teasers?: string[]): string[] {
   return (teasers ?? [])
     .map((text) => text.trim())
     .filter((text) => text.length > 0)
     .slice(0, 3)
     .map((text) => text.slice(0, 160));
+}
+
+function normalizePredictionText(text: string): string {
+  return text.trim().slice(0, 500);
 }
 
 export function computeTeaserUnlockAts(
@@ -359,7 +383,13 @@ export async function getAllBoxes(): Promise<Box[]> {
     ...boxIds,
   );
 
+  const predictionRows = await db.getAllAsync<PredictionRow>(
+    `SELECT * FROM box_prediction WHERE box_id IN (${placeholders})`,
+    ...boxIds,
+  );
+
   const reflectionMap = new Map(reflectionRows.map((r) => [r.box_id, r]));
+  const predictionMap = new Map(predictionRows.map((r) => [r.box_id, r]));
   const notifMap = new Map<string, NotificationRow>();
   notifRows.forEach((row) => {
     if (row.kind === 'unlock' && !notifMap.has(row.box_id)) {
@@ -379,6 +409,7 @@ export async function getAllBoxes(): Promise<Box[]> {
       row,
       reflectionMap.get(row.id) ?? null,
       notifMap.get(row.id) ?? null,
+      predictionMap.get(row.id) ?? null,
       teaserMap.get(row.id) ?? [],
     ),
   );
@@ -411,12 +442,85 @@ export async function getBoxById(id: string): Promise<Box | null> {
     id,
   );
 
-  return rowToBox(row, reflection ?? null, notif ?? null, teaserRows.map(rowToTeaser));
+  const prediction = await db.getFirstAsync<PredictionRow>(
+    'SELECT * FROM box_prediction WHERE box_id = ?',
+    id,
+  );
+
+  return rowToBox(
+    row,
+    reflection ?? null,
+    notif ?? null,
+    prediction ?? null,
+    teaserRows.map(rowToTeaser),
+  );
 }
 
 /**
- * Xóa hộp: hard delete — CASCADE xóa reflection + notification_schedule,
- * hủy notification, xóa file ảnh.
+ * Create, update, or delete a prediction while the box is still unopened.
+ */
+export async function upsertPrediction(
+  boxId: string,
+  text: string,
+): Promise<BoxPrediction | null> {
+  const db = await getDatabase();
+  await db.execAsync('PRAGMA foreign_keys = ON');
+
+  const box = await db.getFirstAsync<{ id: string; is_opened: number }>(
+    'SELECT id, is_opened FROM box WHERE id = ? AND is_deleted = 0',
+    boxId,
+  );
+
+  if (!box || box.is_opened === 1) {
+    throw new Error('BOX_NOT_EDITABLE');
+  }
+
+  const predictionText = normalizePredictionText(text);
+
+  if (!predictionText) {
+    await db.runAsync('DELETE FROM box_prediction WHERE box_id = ?', boxId);
+    return null;
+  }
+
+  const existing = await db.getFirstAsync<PredictionRow>(
+    'SELECT * FROM box_prediction WHERE box_id = ?',
+    boxId,
+  );
+  const now = new Date().toISOString();
+
+  if (existing) {
+    await db.runAsync(
+      `UPDATE box_prediction
+       SET prediction_text = ?, updated_at = ?
+       WHERE box_id = ?`,
+      predictionText,
+      now,
+      boxId,
+    );
+  } else {
+    await db.runAsync(
+      `INSERT INTO box_prediction
+         (id, box_id, prediction_text, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?)`,
+      generateUUID(),
+      boxId,
+      predictionText,
+      now,
+      now,
+    );
+  }
+
+  const saved = await db.getFirstAsync<PredictionRow>(
+    'SELECT * FROM box_prediction WHERE box_id = ?',
+    boxId,
+  );
+
+  return saved ? rowToPrediction(saved) : null;
+}
+
+/**
+ * Xóa hộp: hard delete — CASCADE xóa reflection + notification_schedule +
+ * box_prediction, hủy notification, xóa file ảnh.
  */
 export async function deleteBox(id: string): Promise<void> {
   const db = await getDatabase();

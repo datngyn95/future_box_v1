@@ -347,7 +347,7 @@ export default function OpenedBoxDetailScreen() {
   const displayTitle = box.title || config.label;
   const hasQuestion = !!box.reflectionQuestion;
   const hasOpeningNote = !!box.openingNote;
-  const hasImage = !!box.imagePath && !imageError;
+  const predictionText = box.prediction?.predictionText;
 
   return (
     <View style={[styles.root, { backgroundColor: Colors.background }]}>
@@ -423,6 +423,18 @@ export default function OpenedBoxDetailScreen() {
             </Text>
           </View>
         </Animated.View>
+
+        {/* ── Prediction (F-32) ── */}
+        {predictionText && (
+          <Animated.View style={[styles.section, s3Style]}>
+            <Text style={styles.sectionLabel}>Bạn đã đoán</Text>
+            <View style={styles.predictionCard}>
+              <Text style={styles.predictionText} selectable>
+                {predictionText}
+              </Text>
+            </View>
+          </Animated.View>
+        )}
 
         {/* ── Image (F-10) ── */}
         {box.imagePath && (
@@ -651,6 +663,18 @@ const styles = StyleSheet.create({
     fontSize: FontSize.xl,
     color: Colors.textPrimary,
     lineHeight: FontSize.xl * 1.6,
+  },
+  predictionCard: {
+    backgroundColor: Colors.surfaceSecondary,
+    borderRadius: Radius.lg,
+    padding: Spacing[4],
+    borderWidth: 1,
+    borderColor: Colors.borderLight,
+  },
+  predictionText: {
+    fontSize: FontSize.lg,
+    color: Colors.textPrimary,
+    lineHeight: FontSize.lg * 1.55,
   },
 
   // Image

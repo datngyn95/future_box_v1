@@ -449,3 +449,54 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase) {
 ---
 
 *Hết tài liệu schema v1.0.*
+
+---
+
+## 9. Sprint 4 / F-32 `box_prediction`
+
+`box_prediction` stores the user's prediction before opening a box. It is optional, separate from original box content, and max 1 active prediction per box.
+
+```mermaid
+erDiagram
+    BOX ||--o| BOX_PREDICTION : "has optional prediction"
+
+    BOX_PREDICTION {
+        text id PK "uuid"
+        text box_id FK "-> box.id, UNIQUE"
+        text prediction_text "NOT NULL, <=500 chars in code"
+        text created_at "ISO8601 UTC"
+        text updated_at "nullable ISO8601 UTC"
+    }
+```
+
+### DDL
+
+```sql
+CREATE TABLE IF NOT EXISTS box_prediction (
+  id              TEXT PRIMARY KEY NOT NULL,
+  box_id          TEXT NOT NULL UNIQUE,
+  prediction_text TEXT NOT NULL,
+  created_at      TEXT NOT NULL,
+  updated_at      TEXT,
+  FOREIGN KEY (box_id) REFERENCES box(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_box_prediction_box_id
+  ON box_prediction (box_id);
+```
+
+### Migration v4
+
+- `DATABASE_VERSION = 4`.
+- Append only `if (currentVersion === 3)` in `src/db/database.ts`.
+- Additive migration only: `CREATE TABLE IF NOT EXISTS box_prediction` and `CREATE INDEX IF NOT EXISTS idx_box_prediction_box_id`.
+- No `DROP`, `ALTER`, `RENAME`, or rebuild of existing tables.
+- Existing `box`, `box_teaser`, and `notification_schedule` data from DB version 3 remains intact.
+
+### Rules
+
+- Prediction is entered/edited only while `box.is_opened = 0`.
+- After opening, Detail renders prediction read-only and `upsertPrediction` throws `BOX_NOT_EDITABLE`.
+- Empty normalized text deletes the prediction row.
+- `prediction_text` is trimmed and capped at 500 characters in the data layer; UI also uses `maxLength=500`.
+- Deleting a box cascades to `box_prediction`; `deleteBox` does not need prediction-specific cleanup.
