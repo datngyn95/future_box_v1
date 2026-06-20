@@ -1,7 +1,7 @@
 // Pre-open Screen — "khoảnh khắc nghi thức" trước khi mở hộp (F-06)
 // AC-06.1: người dùng phải chủ động nhấn "Mở hộp", không tự động mở
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -28,8 +28,13 @@ import { Spacing, Radius, Shadow } from '../../../src/constants/spacing';
 import { FontSize, FontWeight } from '../../../src/constants/typography';
 import { getBoxTypeConfig } from '../../../src/constants/boxTypes';
 import { BoxIcon } from '../../../src/components/BoxIcon';
+import {
+  OpeningRitualOverlay,
+  OPENING_RITUAL_DURATION_MS,
+} from '../../../src/components/OpeningRitualOverlay';
 import { useBoxStore, getBoxStatus } from '../../../src/store/boxStore';
 import { openBox } from '../../../src/db/boxRepository';
+import { hapticImpactLight, hapticSuccess } from '../../../src/services/hapticsService';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -55,16 +60,43 @@ export default function PreOpenScreen() {
   const { state, dispatch } = useBoxStore();
   const insets = useSafeAreaInsets();
   const [isOpening, setIsOpening] = useState(false);
+  const [phase, setPhase] = useState<'idle' | 'ritual'>('idle');
+  const hasNavigatedRef = useRef(false);
+  const safetyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const box = state.boxes.find((b) => b.id === id);
   const config = box ? getBoxTypeConfig(box.boxType) : null;
+  const boxId = box?.id;
 
   // Nếu hộp đã mở trước đó, redirect thẳng sang detail
   useEffect(() => {
-    if (box && box.openedAt) {
+    if (box && box.openedAt && !isOpening && phase !== 'ritual') {
       router.replace(`/box/${box.id}/detail`);
     }
-  }, [box]);
+  }, [box, isOpening, phase, router]);
+
+  useEffect(() => {
+    return () => {
+      if (safetyTimerRef.current) {
+        clearTimeout(safetyTimerRef.current);
+      }
+    };
+  }, []);
+
+  const goDetail = useCallback(() => {
+    if (!boxId || hasNavigatedRef.current) return;
+
+    hasNavigatedRef.current = true;
+    if (safetyTimerRef.current) {
+      clearTimeout(safetyTimerRef.current);
+      safetyTimerRef.current = null;
+    }
+    void hapticSuccess();
+    router.replace({
+      pathname: `/box/${boxId}/detail`,
+      params: { isFirstOpen: '1' },
+    });
+  }, [boxId, router]);
 
   const msgIndex = box ? box.id.charCodeAt(0) % MOTIVATIONAL_MESSAGES.length : 0;
   const motivationalMsg = MOTIVATIONAL_MESSAGES[msgIndex];
@@ -118,12 +150,14 @@ export default function PreOpenScreen() {
   }));
 
   const handleOpen = useCallback(async () => {
-    if (!box || isOpening) return;
+    if (!box || isOpening || phase === 'ritual') return;
 
     // Guard: chống tua giờ ngược (AC-03.4)
     if (getBoxStatus(box) !== 'ready_to_open') return;
 
     setIsOpening(true);
+    hasNavigatedRef.current = false;
+    void hapticImpactLight();
     buttonScale.value = withSpring(0.96, { damping: 15, stiffness: 400 });
 
     try {
@@ -133,15 +167,20 @@ export default function PreOpenScreen() {
         type: 'UPDATE_BOX',
         payload: { ...box, openedAt, status: 'opened' },
       });
-      router.replace({
-        pathname: `/box/${box.id}/detail`,
-        params: { isFirstOpen: '1' },
-      });
+      setPhase('ritual');
+      if (safetyTimerRef.current) {
+        clearTimeout(safetyTimerRef.current);
+      }
+      safetyTimerRef.current = setTimeout(
+        goDetail,
+        OPENING_RITUAL_DURATION_MS + 250,
+      );
     } catch {
       setIsOpening(false);
+      setPhase('idle');
       buttonScale.value = withSpring(1);
     }
-  }, [box, isOpening, dispatch, router]);
+  }, [box, isOpening, phase, dispatch, goDetail]);
 
   if (!box || !config) {
     return (
@@ -226,6 +265,10 @@ export default function PreOpenScreen() {
           </TouchableOpacity>
         </Animated.View>
       </Animated.View>
+
+      {phase === 'ritual' && (
+        <OpeningRitualOverlay boxType={box.boxType} onFinish={goDetail} />
+      )}
     </View>
   );
 }
