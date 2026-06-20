@@ -19,6 +19,7 @@
 | Database | **expo-sqlite** ~16.0.10 (`SQLiteProvider` + async API) |
 | Notifications | **expo-notifications** ~0.32.17 (local only, no backend) |
 | Animation | **react-native-reanimated** ~4.1.1 + **react-native-worklets** 0.5.2 |
+| Haptics | **expo-haptics** ~15.0.8 (optional feedback, silent fallback) |
 | Image picker | **expo-image-picker** ~17.0.11 |
 | File system | **expo-file-system** ~19.0.23 (lưu ảnh vào documentDirectory) |
 | Icons | **@expo/vector-icons** ^15.0.3 (Ionicons) |
@@ -64,6 +65,7 @@
 │   │   └── theme.ts            # Dark theme tokens (uiuxguides.md): colors, text, motion, blur
 │   ├── components/
 │   │   ├── BoxIcon.tsx         # Component icon hộp dùng chung
+│   │   ├── OpeningRitualOverlay.tsx # F-33 animated opening overlay
 │   │   ├── AppLockScreen.tsx   # PIN pad overlay (F-18) — auto-trigger biometric
 │   │   └── OnboardingOverlay.tsx # 3-slide onboarding (F-19) — render như overlay
 │   ├── db/
@@ -71,6 +73,7 @@
 │   │   └── boxRepository.ts    # getAllBoxes(), createBox(), openBox(), deleteBox(), teaser mapping
 │   ├── services/
 │   │   ├── notificationService.ts  # scheduleCuriosityNotifications(), computeNotificationMarks(), cancelBoxNotification()
+│   │   ├── hapticsService.ts     # safe expo-haptics wrapper for optional feedback
 │   │   ├── settingsService.ts  # isAppLockEnabled, isOnboardingDone, LOCK_TIMEOUT_MS (AsyncStorage)
 │   │   └── authService.ts      # setPIN/verifyPIN (SHA-256+salt), biometric (expo-local-authentication)
 │   └── store/
@@ -159,4 +162,5 @@ function getBoxStatus(box, now): BoxStatus
 - **Mystery teaser (F-30)**: nhập 0-3 teaser lúc tạo hộp, mỗi teaser tối đa 160 ký tự; `createBox` tự tính `unlock_at` bằng cách chia đều khoảng từ `created_at` đến `unlock_date`. UI chỉ render teaser khi `now >= unlock_at` và hộp còn locked; Home chỉ hiển thị badge, không in nội dung teaser.
 - `unlock_date` tối thiểu = today + 1 ngày (theo Q3 PRD, cập nhật 2026-06-20); chặn chọn hôm nay/quá khứ. Preset: 1 ngày, 2 ngày, 1 tháng, 3 tháng, 6 tháng, 1 năm + "Tùy chỉnh". Validate 2 tầng: UI (`app/create-box/[type].tsx`) + data (`validateUnlockDate` trong `src/db/boxRepository.ts`)
 - **Mở hộp** chỉ khi `now >= unlock_date`; guard ở cả UI (`getBoxStatus`) lẫn tầng data (`openBox` dùng SQL `unlock_date <= now AND is_opened = 0`). Màn `box/[id]/detail.tsx` early-return `null` khi `status !== 'opened'` để không lộ content/ảnh/lời nhắn/câu hỏi của hộp khóa
+- **Opening Ritual (F-33)**: `box/[id]/pre-open.tsx` follows persist -> animate -> navigate. `openBox` runs before `OpeningRitualOverlay`; navigation is guarded by `hasNavigatedRef` and a safety timer so animation callbacks cannot hang or double-navigate. Haptics go through `hapticsService` and must remain optional/silent on unsupported devices. The ritual overlay only receives `boxType` and must not render content, image, opening note, reflection answer, or prediction. F-33 does not change DB schema or migrations.
 - Không cho sửa nội dung sau khi khóa; chỉ cho xóa (theo Q7 PRD)
