@@ -25,7 +25,7 @@ export async function initDatabase(): Promise<void> {
  * KHÔNG sửa migration cũ đã release.
  */
 export async function migrateDbIfNeeded(db: SQLite.SQLiteDatabase): Promise<void> {
-  const DATABASE_VERSION = 1;
+  const DATABASE_VERSION = 2;
 
   const row = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
   let currentVersion = row?.user_version ?? 0;
@@ -78,8 +78,25 @@ export async function migrateDbIfNeeded(db: SQLite.SQLiteDatabase): Promise<void
     currentVersion = 1;
   }
 
-  // Migration tương lai:
-  // if (currentVersion === 1) { ...; currentVersion = 2; }
+  if (currentVersion === 1) {
+    await db.execAsync(`
+      PRAGMA foreign_keys = ON;
+
+      CREATE TABLE IF NOT EXISTS box_teaser (
+        id                   TEXT PRIMARY KEY NOT NULL,
+        box_id               TEXT NOT NULL,
+        teaser_text          TEXT NOT NULL,
+        unlock_at            TEXT NOT NULL,
+        is_system_generated  INTEGER NOT NULL DEFAULT 0 CHECK (is_system_generated IN (0,1)),
+        created_at           TEXT NOT NULL,
+        FOREIGN KEY (box_id) REFERENCES box(id) ON DELETE CASCADE
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_box_teaser_box_id   ON box_teaser (box_id);
+      CREATE INDEX IF NOT EXISTS idx_box_teaser_unlock_at ON box_teaser (unlock_at);
+    `);
+    currentVersion = 2;
+  }
 
   await db.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);
 }

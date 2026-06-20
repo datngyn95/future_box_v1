@@ -6,7 +6,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as Crypto from 'expo-crypto';
 import { getDatabase } from './database';
 import { cancelBoxNotification, scheduleBoxNotification } from '../services/notificationService';
-import { Box, BoxStatus, BoxType } from '../types/box';
+import { Box, BoxStatus, BoxTeaser, BoxType } from '../types/box';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -18,6 +18,7 @@ export interface CreateBoxInput {
   reflectionQuestion?: string;
   imagePath?: string;        // URI tạm từ picker; sẽ được copy vào document dir
   unlockDate: string;        // ISO string (từ Date picker / preset)
+  teasers?: string[];
 }
 
 // DB row shape từ SQLite (snake_case)
@@ -51,6 +52,15 @@ interface NotificationRow {
   is_cancelled: number;
 }
 
+interface TeaserRow {
+  id: string;
+  box_id: string;
+  teaser_text: string;
+  unlock_at: string;
+  is_system_generated: number;
+  created_at: string;
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function generateUUID(): string {
@@ -65,6 +75,7 @@ function rowToBox(
   row: BoxRow,
   reflection: ReflectionRow | null,
   notification: NotificationRow | null,
+  teasers: BoxTeaser[] = [],
 ): Box {
   // Status placeholder — sẽ được tính lại bởi getBoxStatus() trong store
   const status: BoxStatus = row.is_opened === 1 ? 'opened' : 'locked';
@@ -82,8 +93,47 @@ function rowToBox(
     notificationIdentifier: notification?.notification_identifier ?? undefined,
     reflectionQuestion: reflection?.question_text ?? undefined,
     reflectionAnswer: (reflection?.answer as 'yes' | 'no' | null) ?? undefined,
+    teasers,
     status,
   };
+}
+
+function rowToTeaser(row: TeaserRow): BoxTeaser {
+  return {
+    id: row.id,
+    boxId: row.box_id,
+    teaserText: row.teaser_text,
+    unlockAt: row.unlock_at,
+    isSystemGenerated: row.is_system_generated === 1,
+    createdAt: row.created_at,
+  };
+}
+
+function normalizeTeaserTexts(teasers?: string[]): string[] {
+  return (teasers ?? [])
+    .map((text) => text.trim())
+    .filter((text) => text.length > 0)
+    .slice(0, 3)
+    .map((text) => text.slice(0, 160));
+}
+
+export function computeTeaserUnlockAts(
+  createdAtISO: string,
+  unlockDateISO: string,
+  count: number,
+): string[] {
+  if (count <= 0) return [];
+
+  const createdAtMs = new Date(createdAtISO).getTime();
+  const unlockDateMs = new Date(unlockDateISO).getTime();
+  const rangeMs = unlockDateMs - createdAtMs;
+
+  if (rangeMs <= 0) return [];
+
+  return Array.from({ length: count }, (_, index) => {
+    const step = index + 1;
+    return new Date(createdAtMs + (rangeMs * step) / (count + 1)).toISOString();
+  });
 }
 
 /**
@@ -170,6 +220,8 @@ export async function createBox(input: CreateBoxInput): Promise<Box> {
   const unlockDateObj = new Date(input.unlockDate);
   unlockDateObj.setHours(0, 0, 0, 0);
   const unlockDateStr = unlockDateObj.toISOString();
+  const teaserTexts = normalizeTeaserTexts(input.teasers);
+  const teaserUnlockAts = computeTeaserUnlockAts(now, unlockDateStr, teaserTexts.length);
 
   // Step 1: Copy ảnh (nếu có) — ngoài transaction, rollback thủ công nếu cần
   let copiedImagePath: string | null = null;
@@ -238,6 +290,19 @@ export async function createBox(input: CreateBoxInput): Promise<Box> {
         notificationIdentifier,
         unlockDateStr,
       );
+
+      for (let i = 0; i < teaserTexts.length; i += 1) {
+        await db.runAsync(
+          `INSERT INTO box_teaser
+             (id, box_id, teaser_text, unlock_at, is_system_generated, created_at)
+           VALUES (?, ?, ?, ?, 0, ?)`,
+          generateUUID(),
+          boxId,
+          teaserTexts[i],
+          teaserUnlockAts[i],
+          now,
+        );
+      }
     });
   } catch (dbError) {
     // Rollback side effects ngoài DB
@@ -284,11 +349,30 @@ export async function getAllBoxes(): Promise<Box[]> {
     ...boxIds,
   );
 
+  const teaserRows = await db.getAllAsync<TeaserRow>(
+    `SELECT * FROM box_teaser
+     WHERE box_id IN (${placeholders})
+     ORDER BY unlock_at ASC`,
+    ...boxIds,
+  );
+
   const reflectionMap = new Map(reflectionRows.map((r) => [r.box_id, r]));
   const notifMap = new Map(notifRows.map((r) => [r.box_id, r]));
+  const teaserMap = new Map<string, BoxTeaser[]>();
+  teaserRows.forEach((row) => {
+    const teaser = rowToTeaser(row);
+    const current = teaserMap.get(row.box_id) ?? [];
+    current.push(teaser);
+    teaserMap.set(row.box_id, current);
+  });
 
   return boxRows.map((row) =>
-    rowToBox(row, reflectionMap.get(row.id) ?? null, notifMap.get(row.id) ?? null),
+    rowToBox(
+      row,
+      reflectionMap.get(row.id) ?? null,
+      notifMap.get(row.id) ?? null,
+      teaserMap.get(row.id) ?? [],
+    ),
   );
 }
 
@@ -314,7 +398,12 @@ export async function getBoxById(id: string): Promise<Box | null> {
     id,
   );
 
-  return rowToBox(row, reflection ?? null, notif ?? null);
+  const teaserRows = await db.getAllAsync<TeaserRow>(
+    'SELECT * FROM box_teaser WHERE box_id = ? ORDER BY unlock_at ASC',
+    id,
+  );
+
+  return rowToBox(row, reflection ?? null, notif ?? null, teaserRows.map(rowToTeaser));
 }
 
 /**
@@ -336,7 +425,7 @@ export async function deleteBox(id: string): Promise<void> {
 
   await db.execAsync('PRAGMA foreign_keys = ON');
 
-  // Hard delete — CASCADE xử lý reflection + notification_schedule
+  // Hard delete — CASCADE xử lý reflection + notification_schedule + box_teaser
   await db.runAsync('DELETE FROM box WHERE id = ?', id);
 
   // Hủy notification (AC-08.4)

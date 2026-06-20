@@ -68,7 +68,7 @@
 │   │   └── OnboardingOverlay.tsx # 3-slide onboarding (F-19) — render như overlay
 │   ├── db/
 │   │   ├── database.ts         # initDatabase(), migrateDbIfNeeded() — PRAGMA user_version
-│   │   └── boxRepository.ts    # getAllBoxes(), createBox(), openBox(), deleteBox(), v.v.
+│   │   └── boxRepository.ts    # getAllBoxes(), createBox(), openBox(), deleteBox(), teaser mapping
 │   ├── services/
 │   │   ├── notificationService.ts  # scheduleBoxNotification(), cancelBoxNotification()
 │   │   ├── settingsService.ts  # isAppLockEnabled, isOnboardingDone, LOCK_TIMEOUT_MS (AsyncStorage)
@@ -78,7 +78,7 @@
 │
 ├── assets/                     # App icons, splash screen
 ├── design/                     # Tài liệu thiết kế (screens.md, flows/, database/schema.md, uiuxguides.md)
-├── PRD.md                      # Product Requirements Document v1.1
+├── PRD.md                      # Product Requirements Document v1.2
 ├── AGENTS.md                   # Hướng dẫn cho AI agents
 └── CLAUDE.md                   # File này
 ```
@@ -108,13 +108,14 @@ RootLayout (BoxProvider → AppGuard)
 
 ### Data Layer
 
-**SQLite schema** (DB version 1, file: `futureboxes.db`):
+**SQLite schema** (DB version 2, file: `futureboxes.db`):
 
 | Bảng | Mô tả |
 |------|-------|
 | `box` | Thực thể hộp thời gian (nội dung, loại, ngày mở, trạng thái) |
 | `reflection_question` | Câu hỏi Yes/No tùy chọn, quan hệ 1-1 với box |
 | `notification_schedule` | Ánh xạ box ↔ notification identifier để hủy khi xóa |
+| `box_teaser` | Mystery teaser F-30, quan hệ nhiều-1 với box, FK `ON DELETE CASCADE` |
 
 Trạng thái hộp **không lưu cứng** vào DB — được tính toán (derived) trong code:
 ```ts
@@ -140,9 +141,10 @@ function getBoxStatus(box, now): BoxStatus
 
 - **ID**: UUID v4 sinh bằng `expo-crypto` ở client
 - **Thời gian**: `created_at`, `opened_at` lưu ISO8601 UTC; `unlock_date` lưu 00:00 local của ngày mở
-- **Tạo hộp** là 1 transaction: INSERT box + reflection_question + notification_schedule trong `db.withTransactionAsync`
+- **Tạo hộp** là 1 transaction: INSERT box + reflection_question + notification_schedule + box_teaser trong `db.withTransactionAsync`
 - **Ẩn nội dung hộp khóa**: chỉ ẩn ở tầng UI, không mã hóa DB (theo Q4 PRD)
 - **Xóa hộp**: hard delete + CASCADE + hủy notification + xóa file ảnh
+- **Mystery teaser (F-30)**: nhập 0-3 teaser lúc tạo hộp, mỗi teaser tối đa 160 ký tự; `createBox` tự tính `unlock_at` bằng cách chia đều khoảng từ `created_at` đến `unlock_date`. UI chỉ render teaser khi `now >= unlock_at` và hộp còn locked; Home chỉ hiển thị badge, không in nội dung teaser.
 - `unlock_date` tối thiểu = today + 1 ngày (theo Q3 PRD, cập nhật 2026-06-20); chặn chọn hôm nay/quá khứ. Preset: 1 ngày, 2 ngày, 1 tháng, 3 tháng, 6 tháng, 1 năm + "Tùy chỉnh". Validate 2 tầng: UI (`app/create-box/[type].tsx`) + data (`validateUnlockDate` trong `src/db/boxRepository.ts`)
 - **Mở hộp** chỉ khi `now >= unlock_date`; guard ở cả UI (`getBoxStatus`) lẫn tầng data (`openBox` dùng SQL `unlock_date <= now AND is_opened = 0`). Màn `box/[id]/detail.tsx` early-return `null` khi `status !== 'opened'` để không lộ content/ảnh/lời nhắn/câu hỏi của hộp khóa
 - Không cho sửa nội dung sau khi khóa; chỉ cho xóa (theo Q7 PRD)
