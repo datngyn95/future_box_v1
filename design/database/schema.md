@@ -80,7 +80,7 @@ Các bảng:
 ```mermaid
 erDiagram
     BOX ||--o| REFLECTION_QUESTION : "có (0..1)"
-    BOX ||--o| NOTIFICATION_SCHEDULE : "có (0..1)"
+    BOX ||--o{ NOTIFICATION_SCHEDULE : "có (0..4)"
     BOX ||--o{ BOX_TEASER : "có (0..3)"
     BOX_TYPE_TEMPLATE ||--o{ BOX : "phân loại"
 
@@ -108,9 +108,10 @@ erDiagram
 
     NOTIFICATION_SCHEDULE {
         text id PK "uuid"
-        text box_id FK "-> box.id, UNIQUE"
+        text box_id FK "-> box.id"
+        text kind "unlock|teaser_30d|teaser_7d|teaser_1d"
         text notification_identifier "id do expo-notifications trả về"
-        text scheduled_for "ISO8601, = unlock_date"
+        text scheduled_for "ISO8601"
         integer is_cancelled "0|1"
     }
 
@@ -198,18 +199,23 @@ CREATE TABLE IF NOT EXISTS reflection_question (
 
 ### 4.3. Bảng `notification_schedule`
 
+> **Sprint 3 / F-31 (DB version 3):** bảng này không còn `UNIQUE(box_id)`. Một box có thể có nhiều notification: `unlock`, `teaser_30d`, `teaser_7d`, `teaser_1d`. Cột `kind` là bắt buộc, default `unlock`, và CHECK trong 4 giá trị này. Migration v2→v3 rebuild bảng và gán `kind='unlock'` cho các row cũ.
+
 | Field | Kiểu | Constraint | Mô tả |
 |-------|------|------------|-------|
 | `id` | TEXT | PRIMARY KEY NOT NULL | UUID v4 |
-| `box_id` | TEXT | NOT NULL, UNIQUE, FK → box(id) ON DELETE CASCADE | 1-1 với box |
-| `notification_identifier` | TEXT | NULL | ID do `scheduleNotificationAsync` trả về (để hủy - AC-08.4) |
-| `scheduled_for` | TEXT | NOT NULL | ISO8601 = unlock_date |
+| `box_id` | TEXT | NOT NULL, FK → box(id) ON DELETE CASCADE | Nhiều row notification cho 1 box |
+| `kind` | TEXT | NOT NULL DEFAULT 'unlock', CHECK in ('unlock','teaser_30d','teaser_7d','teaser_1d') | Loại notification |
+| `notification_identifier` | TEXT | NULL | ID do `scheduleNotificationAsync` trả về; NULL nếu từ chối quyền hoặc lỗi schedule |
+| `scheduled_for` | TEXT | NOT NULL | ISO8601 của mốc notification |
 | `is_cancelled` | INTEGER | NOT NULL DEFAULT 0 | 1 khi đã hủy (xóa hộp / quá hạn) |
 
 ```sql
 CREATE TABLE IF NOT EXISTS notification_schedule (
   id                      TEXT PRIMARY KEY NOT NULL,
-  box_id                  TEXT NOT NULL UNIQUE,
+  box_id                  TEXT NOT NULL,
+  kind                    TEXT NOT NULL DEFAULT 'unlock'
+                          CHECK (kind IN ('unlock','teaser_30d','teaser_7d','teaser_1d')),
   notification_identifier TEXT,
   scheduled_for           TEXT NOT NULL,
   is_cancelled            INTEGER NOT NULL DEFAULT 0 CHECK (is_cancelled IN (0,1)),
@@ -330,13 +336,14 @@ CREATE INDEX IF NOT EXISTS idx_box_list ON box (is_deleted, is_opened, unlock_da
 
 -- Tra cứu nhanh khi xóa/hủy notification
 CREATE INDEX IF NOT EXISTS idx_notif_box ON notification_schedule (box_id);
+CREATE INDEX IF NOT EXISTS idx_notif_box_kind ON notification_schedule (box_id, kind);
 
 -- Tra cứu teaser theo box và mốc mở
 CREATE INDEX IF NOT EXISTS idx_box_teaser_box_id ON box_teaser (box_id);
 CREATE INDEX IF NOT EXISTS idx_box_teaser_unlock_at ON box_teaser (unlock_at);
 ```
 
-> `reflection_question.box_id` và `notification_schedule.box_id` đã có index ngầm do ràng buộc `UNIQUE`. Với quy mô vài trăm hộp (NFR-P2), các index trên là đủ; tránh over-index.
+> `reflection_question.box_id` có index ngầm do ràng buộc `UNIQUE`; `notification_schedule.box_id` không còn UNIQUE từ DB v3 nên dùng `idx_notif_box` và `idx_notif_box_kind`. Với quy mô vài trăm hộp (NFR-P2), các index trên là đủ; tránh over-index.
 
 **Truy vấn mẫu cho màn hình danh sách (F-05):**
 
@@ -358,7 +365,7 @@ Dùng `PRAGMA user_version` của expo-sqlite trong callback `onInit` của `SQL
 ```ts
 import { type SQLiteDatabase } from 'expo-sqlite';
 
-const DATABASE_VERSION = 2;
+const DATABASE_VERSION = 3;
 
 export async function migrateDbIfNeeded(db: SQLiteDatabase) {
   let { user_version: currentDbVersion } =
@@ -402,6 +409,15 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase) {
       CREATE INDEX IF NOT EXISTS idx_box_teaser_unlock_at ON box_teaser (unlock_at);
     `);
     currentDbVersion = 2;
+  }
+
+  if (currentDbVersion === 2) {
+    await db.execAsync(`
+      PRAGMA foreign_keys = OFF;
+      -- Rebuild notification_schedule: bỏ UNIQUE(box_id), thêm kind, copy data cũ thành kind='unlock'.
+      PRAGMA foreign_keys = ON;
+    `);
+    currentDbVersion = 3;
   }
 
   await db.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);

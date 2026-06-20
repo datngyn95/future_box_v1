@@ -45,3 +45,4 @@ agent-dev-diff.txt
 new 2.txt
 new 3.txt
 *.diff
+*-diff.txt

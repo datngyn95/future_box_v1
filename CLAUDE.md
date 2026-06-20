@@ -70,7 +70,7 @@
 │   │   ├── database.ts         # initDatabase(), migrateDbIfNeeded() — PRAGMA user_version
 │   │   └── boxRepository.ts    # getAllBoxes(), createBox(), openBox(), deleteBox(), teaser mapping
 │   ├── services/
-│   │   ├── notificationService.ts  # scheduleBoxNotification(), cancelBoxNotification()
+│   │   ├── notificationService.ts  # scheduleCuriosityNotifications(), computeNotificationMarks(), cancelBoxNotification()
 │   │   ├── settingsService.ts  # isAppLockEnabled, isOnboardingDone, LOCK_TIMEOUT_MS (AsyncStorage)
 │   │   └── authService.ts      # setPIN/verifyPIN (SHA-256+salt), biometric (expo-local-authentication)
 │   └── store/
@@ -108,7 +108,9 @@ RootLayout (BoxProvider → AppGuard)
 
 ### Data Layer
 
-**SQLite schema** (DB version 2, file: `futureboxes.db`):
+**Sprint 3 / F-31 update:** SQLite hiện là **DB version 3**. Migration v2→v3 rebuild `notification_schedule` để bỏ `UNIQUE(box_id)` và thêm `kind TEXT NOT NULL DEFAULT 'unlock' CHECK (kind IN ('unlock','teaser_30d','teaser_7d','teaser_1d'))`. Một box có thể có tối đa 4 row notification: `teaser_30d`, `teaser_7d`, `teaser_1d`, `unlock`; chỉ các mốc còn trong tương lai mới được schedule. `deleteBox` phải hủy tất cả `notification_identifier` của box rồi dựa vào FK `ON DELETE CASCADE` để xóa row DB.
+
+**SQLite schema** (DB version 3, file: `futureboxes.db`):
 
 | Bảng | Mô tả |
 |------|-------|

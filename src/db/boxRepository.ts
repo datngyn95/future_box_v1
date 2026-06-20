@@ -5,7 +5,10 @@
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Crypto from 'expo-crypto';
 import { getDatabase } from './database';
-import { cancelBoxNotification, scheduleBoxNotification } from '../services/notificationService';
+import {
+  cancelBoxNotification,
+  scheduleCuriosityNotifications,
+} from '../services/notificationService';
 import { Box, BoxStatus, BoxTeaser, BoxType } from '../types/box';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -47,6 +50,7 @@ interface ReflectionRow {
 interface NotificationRow {
   id: string;
   box_id: string;
+  kind: string;
   notification_identifier: string | null;
   scheduled_for: string;
   is_cancelled: number;
@@ -238,13 +242,7 @@ export async function createBox(input: CreateBoxInput): Promise<Box> {
   }
 
   // Step 2: Schedule notification — ngoài transaction, lưu identifier vào DB
-  let notificationIdentifier: string | null = null;
-  try {
-    notificationIdentifier = await scheduleBoxNotification(boxId, unlockDateObj);
-  } catch {
-    // Notification lỗi không block tạo hộp (AC-08.3)
-    notificationIdentifier = null;
-  }
+  const scheduledNotifications = await scheduleCuriosityNotifications(boxId, unlockDateObj);
 
   // Step 3: DB transaction — INSERT box + reflection + notification_schedule
   try {
@@ -281,15 +279,18 @@ export async function createBox(input: CreateBoxInput): Promise<Box> {
       }
 
       // INSERT notification_schedule
-      await db.runAsync(
-        `INSERT INTO notification_schedule
-           (id, box_id, notification_identifier, scheduled_for, is_cancelled)
-         VALUES (?, ?, ?, ?, 0)`,
-        generateUUID(),
-        boxId,
-        notificationIdentifier,
-        unlockDateStr,
-      );
+      for (const notification of scheduledNotifications) {
+        await db.runAsync(
+          `INSERT INTO notification_schedule
+             (id, box_id, kind, notification_identifier, scheduled_for, is_cancelled)
+           VALUES (?, ?, ?, ?, ?, 0)`,
+          generateUUID(),
+          boxId,
+          notification.kind,
+          notification.identifier,
+          notification.scheduledFor,
+        );
+      }
 
       for (let i = 0; i < teaserTexts.length; i += 1) {
         await db.runAsync(
@@ -306,8 +307,10 @@ export async function createBox(input: CreateBoxInput): Promise<Box> {
     });
   } catch (dbError) {
     // Rollback side effects ngoài DB
-    if (notificationIdentifier) {
-      await cancelBoxNotification(notificationIdentifier).catch(() => {});
+    for (const notification of scheduledNotifications) {
+      if (notification.identifier) {
+        await cancelBoxNotification(notification.identifier).catch(() => {});
+      }
     }
     if (copiedImagePath) {
       await deleteImageFile(copiedImagePath).catch(() => {});
@@ -357,7 +360,12 @@ export async function getAllBoxes(): Promise<Box[]> {
   );
 
   const reflectionMap = new Map(reflectionRows.map((r) => [r.box_id, r]));
-  const notifMap = new Map(notifRows.map((r) => [r.box_id, r]));
+  const notifMap = new Map<string, NotificationRow>();
+  notifRows.forEach((row) => {
+    if (row.kind === 'unlock' && !notifMap.has(row.box_id)) {
+      notifMap.set(row.box_id, row);
+    }
+  });
   const teaserMap = new Map<string, BoxTeaser[]>();
   teaserRows.forEach((row) => {
     const teaser = rowToTeaser(row);
@@ -394,7 +402,7 @@ export async function getBoxById(id: string): Promise<Box | null> {
   );
 
   const notif = await db.getFirstAsync<NotificationRow>(
-    'SELECT * FROM notification_schedule WHERE box_id = ?',
+    "SELECT * FROM notification_schedule WHERE box_id = ? AND kind = 'unlock' LIMIT 1",
     id,
   );
 
@@ -418,7 +426,7 @@ export async function deleteBox(id: string): Promise<void> {
     'SELECT image_path FROM box WHERE id = ?',
     id,
   );
-  const notif = await db.getFirstAsync<NotificationRow>(
+  const notifications = await db.getAllAsync<{ notification_identifier: string | null }>(
     'SELECT notification_identifier FROM notification_schedule WHERE box_id = ?',
     id,
   );
@@ -429,8 +437,10 @@ export async function deleteBox(id: string): Promise<void> {
   await db.runAsync('DELETE FROM box WHERE id = ?', id);
 
   // Hủy notification (AC-08.4)
-  if (notif?.notification_identifier) {
-    await cancelBoxNotification(notif.notification_identifier).catch(() => {});
+  for (const notification of notifications) {
+    if (notification.notification_identifier) {
+      await cancelBoxNotification(notification.notification_identifier).catch(() => {});
+    }
   }
 
   // Xóa ảnh

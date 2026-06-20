@@ -25,7 +25,7 @@ export async function initDatabase(): Promise<void> {
  * KHÔNG sửa migration cũ đã release.
  */
 export async function migrateDbIfNeeded(db: SQLite.SQLiteDatabase): Promise<void> {
-  const DATABASE_VERSION = 2;
+  const DATABASE_VERSION = 3;
 
   const row = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
   let currentVersion = row?.user_version ?? 0;
@@ -96,6 +96,37 @@ export async function migrateDbIfNeeded(db: SQLite.SQLiteDatabase): Promise<void
       CREATE INDEX IF NOT EXISTS idx_box_teaser_unlock_at ON box_teaser (unlock_at);
     `);
     currentVersion = 2;
+  }
+
+  if (currentVersion === 2) {
+    await db.execAsync(`
+      PRAGMA foreign_keys = OFF;
+
+      CREATE TABLE notification_schedule_new (
+        id                      TEXT PRIMARY KEY NOT NULL,
+        box_id                  TEXT NOT NULL,
+        kind                    TEXT NOT NULL DEFAULT 'unlock'
+                                  CHECK (kind IN ('unlock','teaser_30d','teaser_7d','teaser_1d')),
+        notification_identifier TEXT,
+        scheduled_for           TEXT NOT NULL,
+        is_cancelled            INTEGER NOT NULL DEFAULT 0 CHECK (is_cancelled IN (0,1)),
+        FOREIGN KEY (box_id) REFERENCES box(id) ON DELETE CASCADE
+      );
+
+      INSERT INTO notification_schedule_new
+        (id, box_id, kind, notification_identifier, scheduled_for, is_cancelled)
+      SELECT id, box_id, 'unlock', notification_identifier, scheduled_for, is_cancelled
+      FROM notification_schedule;
+
+      DROP TABLE notification_schedule;
+      ALTER TABLE notification_schedule_new RENAME TO notification_schedule;
+
+      CREATE INDEX IF NOT EXISTS idx_notif_box      ON notification_schedule (box_id);
+      CREATE INDEX IF NOT EXISTS idx_notif_box_kind ON notification_schedule (box_id, kind);
+
+      PRAGMA foreign_keys = ON;
+    `);
+    currentVersion = 3;
   }
 
   await db.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);
