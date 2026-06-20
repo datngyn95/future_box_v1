@@ -12,6 +12,7 @@ import {
   Dimensions,
   Modal,
   Alert,
+  TextInput,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -36,7 +37,7 @@ import { FontSize, FontWeight } from '../../../src/constants/typography';
 import { getBoxTypeConfig } from '../../../src/constants/boxTypes';
 import { BoxIcon } from '../../../src/components/BoxIcon';
 import { getBoxStatus, useBoxStore } from '../../../src/store/boxStore';
-import { answerReflectionQuestion } from '../../../src/db/boxRepository';
+import { answerReflectionQuestion, upsertReflectionNote } from '../../../src/db/boxRepository';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -255,6 +256,14 @@ export default function OpenedBoxDetailScreen() {
     box?.reflectionAnswer === null || box?.reflectionAnswer === undefined,
   );
   const [imageError, setImageError] = useState(false);
+  const [reflectionDraft, setReflectionDraft] = useState(box?.reflectionNote ?? '');
+  const [reflectionRating, setReflectionRating] = useState<number | null>(
+    box?.reflectionRating ?? null,
+  );
+  const [isEditingReflection, setIsEditingReflection] = useState(
+    !box?.reflectionNote && !box?.reflectionRating,
+  );
+  const [isSavingReflection, setIsSavingReflection] = useState(false);
 
   useEffect(() => {
     if (!box || !status || status === 'opened') return;
@@ -265,6 +274,24 @@ export default function OpenedBoxDetailScreen() {
       router.replace(`/box/${box.id}/locked`);
     }
   }, [box, router, status]);
+
+  useEffect(() => {
+    setLocalAnswer(box?.reflectionAnswer ?? null);
+    setShowAnswerButtons(box?.reflectionAnswer === null || box?.reflectionAnswer === undefined);
+  }, [box?.id, box?.reflectionAnswer]);
+
+  useEffect(() => {
+    if (!box) return;
+    setReflectionDraft(box.reflectionNote ?? '');
+    setReflectionRating(box.reflectionRating ?? null);
+    setIsEditingReflection(!box.reflectionNote && !box.reflectionRating);
+  }, [box?.id]);
+
+  useEffect(() => {
+    if (!box || isEditingReflection) return;
+    setReflectionDraft(box.reflectionNote ?? '');
+    setReflectionRating(box.reflectionRating ?? null);
+  }, [box?.id, box?.reflectionNote, box?.reflectionRating, isEditingReflection]);
 
   // Stagger fade-in + slide-up for content sections (F-14)
   const section1Opacity = useSharedValue(0);
@@ -340,6 +367,32 @@ export default function OpenedBoxDetailScreen() {
     setShowAnswerButtons(true);
   }, []);
 
+  const handleSaveReflection = useCallback(async () => {
+    if (!box || isSavingReflection) return;
+    try {
+      setIsSavingReflection(true);
+      const savedReflection = await upsertReflectionNote(box.id, {
+        note: reflectionDraft,
+        rating: reflectionRating,
+      });
+      dispatch({
+        type: 'UPDATE_BOX',
+        payload: { ...box, ...savedReflection },
+      });
+      setReflectionDraft(savedReflection.reflectionNote ?? '');
+      setReflectionRating(savedReflection.reflectionRating ?? null);
+      setIsEditingReflection(!savedReflection.reflectionNote && !savedReflection.reflectionRating);
+    } catch (error) {
+      const message =
+        error instanceof Error && error.message === 'BOX_NOT_OPENED'
+          ? 'Chỉ có thể lưu cảm nhận sau khi hộp đã được mở.'
+          : 'Không thể lưu cảm nhận. Vui lòng thử lại.';
+      Alert.alert('Lỗi', message);
+    } finally {
+      setIsSavingReflection(false);
+    }
+  }, [box, dispatch, isSavingReflection, reflectionDraft, reflectionRating]);
+
   if (!box || !config || status !== 'opened') {
     return null;
   }
@@ -348,6 +401,7 @@ export default function OpenedBoxDetailScreen() {
   const hasQuestion = !!box.reflectionQuestion;
   const hasOpeningNote = !!box.openingNote;
   const predictionText = box.prediction?.predictionText;
+  const hasSavedReflection = !!box.reflectionNote || !!box.reflectionRating;
 
   return (
     <View style={[styles.root, { backgroundColor: Colors.background }]}>
@@ -528,6 +582,110 @@ export default function OpenedBoxDetailScreen() {
             </View>
           </Animated.View>
         )}
+
+        {/* ── Post-open reflection (F-34) ── */}
+        <Animated.View style={[styles.section, s4Style]}>
+          <Text style={styles.sectionLabel}>CẢM NHẬN SAU KHI MỞ</Text>
+          <View style={styles.reflectionCard}>
+            {hasSavedReflection && !isEditingReflection ? (
+              <>
+                {box.reflectionNote ? (
+                  <Text style={styles.reflectionSavedText} selectable>
+                    {box.reflectionNote}
+                  </Text>
+                ) : (
+                  <Text style={styles.reflectionEmptyText}>Bạn chưa viết ghi chú cảm nhận.</Text>
+                )}
+                {box.reflectionRating ? (
+                  <View style={styles.savedRatingRow}>
+                    {Array.from({ length: 5 }, (_, index) => {
+                      const value = index + 1;
+                      return (
+                        <Ionicons
+                          key={value}
+                          name={value <= box.reflectionRating! ? 'star' : 'star-outline'}
+                          size={22}
+                          color={value <= box.reflectionRating! ? '#F6B74B' : Colors.textMuted}
+                        />
+                      );
+                    })}
+                  </View>
+                ) : null}
+                <TouchableOpacity
+                  onPress={() => {
+                    setReflectionDraft(box.reflectionNote ?? '');
+                    setReflectionRating(box.reflectionRating ?? null);
+                    setIsEditingReflection(true);
+                  }}
+                  style={styles.editReflectionBtn}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="create-outline" size={18} color={Colors.primary} />
+                  <Text style={styles.editReflectionText}>Sửa</Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <>
+                <TextInput
+                  style={styles.reflectionInput}
+                  value={reflectionDraft}
+                  onChangeText={(text) => setReflectionDraft(text.slice(0, 1000))}
+                  placeholder="Viết vài dòng cho chính bạn sau khi mở hộp..."
+                  placeholderTextColor={Colors.textMuted}
+                  multiline
+                  textAlignVertical="top"
+                  maxLength={1000}
+                />
+                <View style={styles.ratingRow}>
+                  {Array.from({ length: 5 }, (_, index) => {
+                    const value = index + 1;
+                    const selected = reflectionRating !== null && value <= reflectionRating;
+                    return (
+                      <TouchableOpacity
+                        key={value}
+                        style={styles.ratingBtn}
+                        onPress={() => setReflectionRating(reflectionRating === value ? null : value)}
+                        activeOpacity={0.75}
+                      >
+                        <Ionicons
+                          name={selected ? 'star' : 'star-outline'}
+                          size={26}
+                          color={selected ? '#F6B74B' : Colors.textMuted}
+                        />
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+                <TouchableOpacity
+                  style={[
+                    styles.saveReflectionBtn,
+                    isSavingReflection && styles.saveReflectionBtnDisabled,
+                  ]}
+                  onPress={handleSaveReflection}
+                  activeOpacity={0.85}
+                  disabled={isSavingReflection}
+                >
+                  <Ionicons name="save-outline" size={18} color="#FFFFFF" />
+                  <Text style={styles.saveReflectionText}>
+                    {isSavingReflection ? 'Đang lưu...' : 'Lưu cảm nhận'}
+                  </Text>
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
+        </Animated.View>
+
+        {/* ── Create next box CTA (F-35) ── */}
+        <Animated.View style={[styles.section, styles.nextBoxSection, s4Style]}>
+          <TouchableOpacity
+            style={styles.nextBoxBtn}
+            onPress={() => router.push('/create-box')}
+            activeOpacity={0.88}
+          >
+            <Ionicons name="add-circle-outline" size={22} color="#FFFFFF" />
+            <Text style={styles.nextBoxText}>Tạo hộp mới cho tương lai</Text>
+          </TouchableOpacity>
+        </Animated.View>
       </ScrollView>
 
       {/* ── Confetti overlay (F-07 AC-07.1) ── */}
@@ -776,6 +934,107 @@ const styles = StyleSheet.create({
     fontSize: FontSize.md,
     color: Colors.primary,
     textDecorationLine: 'underline',
+  },
+
+  // Post-open reflection
+  reflectionCard: {
+    backgroundColor: Colors.surface,
+    borderRadius: Radius.lg,
+    padding: Spacing[4],
+    borderWidth: 1,
+    borderColor: Colors.borderLight,
+    gap: Spacing[3],
+    ...Shadow.sm,
+  },
+  reflectionSavedText: {
+    fontSize: FontSize.lg,
+    color: Colors.textPrimary,
+    lineHeight: FontSize.lg * 1.55,
+  },
+  reflectionEmptyText: {
+    fontSize: FontSize.md,
+    color: Colors.textMuted,
+    fontStyle: 'italic',
+  },
+  savedRatingRow: {
+    flexDirection: 'row',
+    gap: Spacing[1],
+  },
+  editReflectionBtn: {
+    minHeight: 44,
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing[2],
+    paddingVertical: Spacing[2],
+    paddingHorizontal: Spacing[3],
+    borderRadius: Radius.full,
+    backgroundColor: Colors.primaryLight,
+  },
+  editReflectionText: {
+    fontSize: FontSize.md,
+    fontWeight: FontWeight.semiBold,
+    color: Colors.primary,
+  },
+  reflectionInput: {
+    minHeight: 120,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.borderLight,
+    backgroundColor: Colors.surfaceSecondary,
+    padding: Spacing[3],
+    fontSize: FontSize.md,
+    color: Colors.textPrimary,
+    lineHeight: FontSize.md * 1.5,
+  },
+  ratingRow: {
+    flexDirection: 'row',
+    gap: Spacing[2],
+  },
+  ratingBtn: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: Radius.full,
+    backgroundColor: Colors.surfaceSecondary,
+  },
+  saveReflectionBtn: {
+    minHeight: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing[2],
+    borderRadius: Radius.lg,
+    backgroundColor: Colors.primary,
+    paddingHorizontal: Spacing[4],
+  },
+  saveReflectionBtnDisabled: {
+    opacity: 0.65,
+  },
+  saveReflectionText: {
+    fontSize: FontSize.lg,
+    fontWeight: FontWeight.semiBold,
+    color: '#FFFFFF',
+  },
+  nextBoxSection: {
+    marginBottom: Spacing[4],
+  },
+  nextBoxBtn: {
+    minHeight: 52,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing[2],
+    borderRadius: Radius.lg,
+    backgroundColor: Colors.primary,
+    paddingHorizontal: Spacing[4],
+    ...Shadow.md,
+  },
+  nextBoxText: {
+    fontSize: FontSize.lg,
+    fontWeight: FontWeight.bold,
+    color: '#FFFFFF',
   },
 
   // Confetti overlay

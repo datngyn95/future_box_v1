@@ -49,7 +49,7 @@
 │   │   └── [id]/
 │   │       ├── locked.tsx      # Locked Box Peek Screen (metadata + xóa hộp F-15)
 │   │       ├── pre-open.tsx    # Pre-open Screen (F-06, guard check, "Mở hộp" CTA)
-│   │       └── detail.tsx      # Opened Box Detail Screen (F-07, F-11, F-14, confetti, empathy)
+│   │       └── detail.tsx      # Opened Box Detail Screen (F-07, F-11, F-14, F-34/F-35, confetti, empathy)
 │   ├── settings.tsx            # Settings Screen (App Lock, Change PIN, Biometric)
 │   └── auth/
 │       └── set-pin.tsx         # Set/Change PIN (3 steps: enter → confirm → biometric offer)
@@ -70,7 +70,7 @@
 │   │   └── OnboardingOverlay.tsx # 3-slide onboarding (F-19) — render như overlay
 │   ├── db/
 │   │   ├── database.ts         # initDatabase(), migrateDbIfNeeded() — PRAGMA user_version
-│   │   └── boxRepository.ts    # getAllBoxes(), createBox(), openBox(), deleteBox(), teaser mapping
+│   │   └── boxRepository.ts    # getAllBoxes(), createBox(), openBox(), deleteBox(), reflection/prediction/teaser mapping
 │   ├── services/
 │   │   ├── notificationService.ts  # scheduleCuriosityNotifications(), computeNotificationMarks(), cancelBoxNotification()
 │   │   ├── hapticsService.ts     # safe expo-haptics wrapper for optional feedback
@@ -119,15 +119,24 @@ RootLayout (BoxProvider → AppGuard)
 - Prediction can be freely edited while `is_opened = 0`; after opening it is read-only in Detail and `upsertPrediction` throws `BOX_NOT_EDITABLE` for direct writes.
 - Locked screen must not render original `content`, `image_path`, `opening_note`, or `reflection_question`; it may render only user-entered prediction plus existing metadata/teasers.
 
+### Sprint 6 / F-34-F-35 Post-open Reflection
+
+- SQLite DB version 5 rebuilds `reflection_question` from v4 to v5 using the same safe rebuild pattern as v2->v3: copy `id`, `box_id`, `question_text`, `answer`, `answered_at`, then drop/rename with FK OFF->ON.
+- `reflection_question.question_text` is nullable in v5 so opened boxes without a Yes/No question can still store post-open reflection.
+- `reflection_question` now includes `reflection_note TEXT`, `rating INTEGER CHECK (rating IS NULL OR rating BETWEEN 1 AND 5)`, and `updated_at TEXT`.
+- F-34 reflection note/rating is optional, editable after opening, and can only be written when `box.is_opened = 1`; data layer guard is `BOX_NOT_OPENED`.
+- `upsertReflectionNote` must only touch `reflection_note`, `rating`, and `updated_at`; it must not change `question_text`, `answer`, `answered_at`, or original box content/image/opening note.
+- F-35 CTA is rendered at the end of opened `box/[id]/detail.tsx` and navigates to `/create-box`; it is inline in the ScrollView, not a blocking modal.
+
 
 **Sprint 3 / F-31 update:** SQLite hiện là **DB version 3**. Migration v2→v3 rebuild `notification_schedule` để bỏ `UNIQUE(box_id)` và thêm `kind TEXT NOT NULL DEFAULT 'unlock' CHECK (kind IN ('unlock','teaser_30d','teaser_7d','teaser_1d'))`. Một box có thể có tối đa 4 row notification: `teaser_30d`, `teaser_7d`, `teaser_1d`, `unlock`; chỉ các mốc còn trong tương lai mới được schedule. `deleteBox` phải hủy tất cả `notification_identifier` của box rồi dựa vào FK `ON DELETE CASCADE` để xóa row DB.
 
-**SQLite schema** (DB version 4, file: `futureboxes.db`):
+**SQLite schema** (DB version 5, file: `futureboxes.db`):
 
 | Bảng | Mô tả |
 |------|-------|
 | `box` | Thực thể hộp thời gian (nội dung, loại, ngày mở, trạng thái) |
-| `reflection_question` | Câu hỏi Yes/No tùy chọn, quan hệ 1-1 với box |
+| `reflection_question` | Câu hỏi Yes/No tùy chọn + post-open reflection note/rating; 1-1 với box, `question_text` nullable, FK `ON DELETE CASCADE` |
 | `notification_schedule` | Ánh xạ box ↔ notification identifier để hủy khi xóa |
 | `box_teaser` | Mystery teaser F-30, quan hệ nhiều-1 với box, FK `ON DELETE CASCADE` |
 | `box_prediction` | Prediction Before Opening F-32, optional 0..1 per box, FK `ON DELETE CASCADE`, read-only after open |
@@ -163,4 +172,6 @@ function getBoxStatus(box, now): BoxStatus
 - `unlock_date` tối thiểu = today + 1 ngày (theo Q3 PRD, cập nhật 2026-06-20); chặn chọn hôm nay/quá khứ. Preset: 1 ngày, 2 ngày, 1 tháng, 3 tháng, 6 tháng, 1 năm + "Tùy chỉnh". Validate 2 tầng: UI (`app/create-box/[type].tsx`) + data (`validateUnlockDate` trong `src/db/boxRepository.ts`)
 - **Mở hộp** chỉ khi `now >= unlock_date`; guard ở cả UI (`getBoxStatus`) lẫn tầng data (`openBox` dùng SQL `unlock_date <= now AND is_opened = 0`). Màn `box/[id]/detail.tsx` early-return `null` khi `status !== 'opened'` để không lộ content/ảnh/lời nhắn/câu hỏi của hộp khóa
 - **Opening Ritual (F-33)**: `box/[id]/pre-open.tsx` follows persist -> animate -> navigate. `openBox` runs before `OpeningRitualOverlay`; navigation is guarded by `hasNavigatedRef` and a safety timer so animation callbacks cannot hang or double-navigate. Haptics go through `hapticsService` and must remain optional/silent on unsupported devices. The ritual overlay only receives `boxType` and must not render content, image, opening note, reflection answer, or prediction. F-33 does not change DB schema or migrations.
+- **Post-open Reflection (F-34)**: reflection note + rating 1-5 are optional and editable only after open. UI renders only in opened detail; repository writes are guarded by `BOX_NOT_OPENED`. Reflection is independent from Yes/No answer and original content remains read-only.
+- **Create Next Box CTA (F-35)**: opened detail ends with inline CTA "Tạo hộp mới cho tương lai" -> `/create-box`; keep EmpathyCard CTA for the "No" answer path.
 - Không cho sửa nội dung sau khi khóa; chỉ cho xóa (theo Q7 PRD)
