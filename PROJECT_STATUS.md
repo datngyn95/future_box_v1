@@ -1,6 +1,6 @@
 # PROJECT_STATUS - FutureBoxes
 
-Cập nhật lần cuối: 2026-06-21 (V1 Curiosity & Engagement — Sprint 8 hoàn thành)
+Cập nhật lần cuối: 2026-06-21 (V1 hoàn thành + Polish: open-box effects, filter chip, CTA bottom-inset)
 
 ---
 
@@ -87,6 +87,16 @@ MVP (F-01~F-19) ✅  →  V1 Curiosity & Engagement (F-30~F-37) ✅  →  Comple
 | 7 | **F-36 Personal Stats** | `app/stats.tsx` read-only, tính từ state.boxes qua `utils/stats.ts` | 5 | f7434e1 |
 | 8 | **F-37 New Box Types** | Thêm BoxType: Secret, Challenge, Letter (config/template; chung bảng `box`) | 6 | c498ff4 |
 | — | Fix Prediction UI | Sửa lỗi ô nhập dự đoán trên màn locked | 6 | e39ccd4 |
+
+---
+
+## Giai đoạn 5: Polish & Fixes sau V1 ✅ HOÀN THÀNH
+
+| Nhánh | Mô tả | DB version | Commit |
+|-------|-------|------------|--------|
+| `feature/fix-filter-chip-text` | Sửa lỗi cắt chữ ở filter chips trên màn trang chủ | 6 | f66cd6e |
+| `feature/open-box-effects` | **Hiệu ứng mở hộp 3 giai đoạn** + âm thanh (`soundService` + `expo-audio`): trước khi mở (rung ngẫu nhiên + knock), lúc mở (`OpeningRitualOverlay` tối màn + nắp mở chậm + creak), sau khi mở (`FogRevealOverlay` vuốt lau sương + wind loop) | 6 | 651b23c |
+| `fix/create-box-cta-bottom-inset` | Sửa nút "Xem thêm" hộp đã mở và FAB bị che ở đáy | 6 | 154ee69 |
 
 ---
 
