@@ -35,6 +35,7 @@ import {
 import { useBoxStore, getBoxStatus } from '../../../src/store/boxStore';
 import { openBox } from '../../../src/db/boxRepository';
 import { hapticImpactLight, hapticSuccess } from '../../../src/services/hapticsService';
+import { playSound } from '../../../src/services/soundService';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -63,6 +64,7 @@ export default function PreOpenScreen() {
   const [phase, setPhase] = useState<'idle' | 'ritual'>('idle');
   const hasNavigatedRef = useRef(false);
   const safetyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const knockTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const box = state.boxes.find((b) => b.id === id);
   const config = box ? getBoxTypeConfig(box.boxType) : null;
@@ -102,27 +104,45 @@ export default function PreOpenScreen() {
   const motivationalMsg = MOTIVATIONAL_MESSAGES[msgIndex];
 
   // Animations
-  const floatY = useSharedValue(0);
-  const lightOpacity = useSharedValue(0.5);
+  const shakeX = useSharedValue(0);
+  const shakeY = useSharedValue(0);
+  const shakeRotate = useSharedValue(0);
+  const lightOpacity = useSharedValue(0.45);
   const infoOpacity = useSharedValue(0);
   const infoTranslateY = useSharedValue(20);
   const buttonScale = useSharedValue(1);
+  const openingRef = useRef(false);
+
+  // GĐ1: hộp đứng yên, thỉnh thoảng rung RẤT NHẸ như có thứ gì bên trong,
+  // kèm tiếng gõ "cốc… cốc…" + rung haptic.
+  const triggerShake = useCallback((strong: boolean) => {
+    const amp = strong ? 5 : 3;
+    const rot = strong ? 2.2 : 1.2;
+    shakeX.value = withSequence(
+      withTiming(-amp, { duration: 45 }),
+      withTiming(amp, { duration: 60 }),
+      withTiming(-amp * 0.5, { duration: 55 }),
+      withTiming(0, { duration: 70 }),
+    );
+    shakeY.value = withSequence(
+      withTiming(-amp * 0.4, { duration: 50 }),
+      withTiming(0, { duration: 90 }),
+    );
+    shakeRotate.value = withSequence(
+      withTiming(-rot, { duration: 50 }),
+      withTiming(rot, { duration: 65 }),
+      withTiming(0, { duration: 75 }),
+    );
+    void hapticImpactLight();
+    playSound('knock', { volume: strong ? 1 : 0.7 });
+  }, []);
 
   useEffect(() => {
-    // Box float loop
-    floatY.value = withRepeat(
-      withSequence(
-        withTiming(-10, { duration: 1600, easing: Easing.inOut(Easing.sin) }),
-        withTiming(0, { duration: 1600, easing: Easing.inOut(Easing.sin) }),
-      ),
-      -1,
-      false,
-    );
-    // Glow pulse
+    // Glow pulse nhẹ giữ cảm giác "sống"
     lightOpacity.value = withRepeat(
       withSequence(
-        withTiming(1.0, { duration: 1200, easing: Easing.inOut(Easing.sin) }),
-        withTiming(0.5, { duration: 1200, easing: Easing.inOut(Easing.sin) }),
+        withTiming(0.85, { duration: 1400, easing: Easing.inOut(Easing.sin) }),
+        withTiming(0.45, { duration: 1400, easing: Easing.inOut(Easing.sin) }),
       ),
       -1,
       false,
@@ -132,8 +152,37 @@ export default function PreOpenScreen() {
     infoTranslateY.value = withTiming(0, { duration: 400, easing: Easing.out(Easing.quad) });
   }, []);
 
+  // Bộ lập lịch rung/gõ với NHỊP NGẪU NHIÊN — lúc gần lúc xa.
+  useEffect(() => {
+    let cancelled = false;
+    const scheduleNext = () => {
+      const delay = 1100 + Math.random() * 2700; // 1.1s–3.8s
+      knockTimerRef.current = setTimeout(() => {
+        if (cancelled || openingRef.current) return;
+        const strong = Math.random() > 0.55;
+        triggerShake(strong);
+        // đôi khi gõ "cốc cốc" liền 2 nhịp
+        if (Math.random() > 0.6) {
+          setTimeout(() => {
+            if (!cancelled && !openingRef.current) triggerShake(false);
+          }, 230);
+        }
+        scheduleNext();
+      }, delay);
+    };
+    scheduleNext();
+    return () => {
+      cancelled = true;
+      if (knockTimerRef.current) clearTimeout(knockTimerRef.current);
+    };
+  }, [triggerShake]);
+
   const floatStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: floatY.value }],
+    transform: [
+      { translateX: shakeX.value },
+      { translateY: shakeY.value },
+      { rotate: `${shakeRotate.value}deg` },
+    ],
   }));
 
   const lightStyle = useAnimatedStyle(() => ({
@@ -156,6 +205,11 @@ export default function PreOpenScreen() {
     if (getBoxStatus(box) !== 'ready_to_open') return;
 
     setIsOpening(true);
+    openingRef.current = true;
+    if (knockTimerRef.current) {
+      clearTimeout(knockTimerRef.current);
+      knockTimerRef.current = null;
+    }
     hasNavigatedRef.current = false;
     void hapticImpactLight();
     buttonScale.value = withSpring(0.96, { damping: 15, stiffness: 400 });
