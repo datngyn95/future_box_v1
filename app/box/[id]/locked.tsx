@@ -82,10 +82,13 @@ export default function LockedBoxPeekScreen() {
     });
   }, []);
 
+  // Chỉ khởi tạo lại text + cờ "Đã lưu" khi chuyển sang hộp khác.
+  // Không phụ thuộc vào predictionText của store để tránh tự reset cờ
+  // "Đã lưu" ngay sau khi dispatch cập nhật prediction (bug bấm lưu 2 lần).
   useEffect(() => {
     setPredictionText(box?.prediction?.predictionText ?? '');
     setPredictionSaved(false);
-  }, [box?.id, box?.prediction?.predictionText]);
+  }, [box?.id]);
 
   const countdownStyle = useAnimatedStyle(() => ({
     transform: [{ scale: countdownScale.value }],
@@ -196,12 +199,14 @@ export default function LockedBoxPeekScreen() {
       </LinearGradient>
 
       <ScrollView
+        style={styles.scroll}
         contentContainerStyle={[
           styles.scrollContent,
           { paddingBottom: insets.bottom + Spacing[8] },
         ]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
       >
         <Animated.View style={[styles.countdownContainer, countdownStyle]}>
           <Text style={[styles.countdownNumber, { color: config.color }]}>
@@ -374,6 +379,8 @@ const styles = StyleSheet.create({
     color: Colors.textOnColor,
     letterSpacing: 1.2,
   },
+
+  scroll: { flex: 1 },
 
   scrollContent: {
     alignItems: 'center',
