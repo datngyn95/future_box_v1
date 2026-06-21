@@ -19,6 +19,54 @@
 - **Bảo mật ứng dụng**: App Lock bằng PIN (SHA-256 + salt) + sinh trắc học (Face ID / vân tay).
 - **Onboarding** 3 slide cho lần đầu sử dụng.
 
+### 📋 Danh sách tính năng chi tiết (F-01 → F-29)
+
+#### Cốt lõi MVP — Must / Should have (F-01 → F-19)
+
+| Mã | Tính năng | Mô tả |
+|----|-----------|-------|
+| **F-01** | Tạo hộp thời gian | Tạo hộp với tiêu đề, nội dung text, chọn loại hộp, ngày mở. |
+| **F-02** | Chọn ngày mở (unlock date) | Date picker chỉ cho chọn từ ngày mai trở đi; preset nhanh: 1 ngày, 2 ngày, 1 tháng, 3 tháng, 6 tháng, 1 năm. |
+| **F-03** | Khóa hộp & ẩn nội dung | Sau khi tạo, nội dung bị ẩn hoàn toàn cho đến ngày mở — core feature. |
+| **F-04** | Câu hỏi phản hồi | Tùy chọn thêm 1 câu hỏi Yes/No (vd "Kết quả tốt chứ?", "Đã giảm cân chưa?"). |
+| **F-05** | Danh sách hộp | Màn hình chính nhóm hộp: Đang khóa, Sẵn sàng mở, Đã mở, kèm đếm ngược. |
+| **F-06** | Mở hộp khi đến hạn | Khi qua ngày mở, hộp chuyển "Sẵn sàng mở"; người dùng thực hiện mở (có hiệu ứng). |
+| **F-07** | Trả lời câu hỏi & hiệu ứng cảm xúc | Sau khi mở hiển thị nội dung + câu hỏi; chọn Yes kích hoạt confetti/chúc mừng. |
+| **F-08** | Local notification khi đến hạn | Đẩy thông báo cục bộ vào ngày mở ("Một hộp thời gian đã sẵn sàng mở!"). |
+| **F-09** | Lưu trữ cục bộ (offline-first) | Toàn bộ hộp lưu trên thiết bị, hoạt động không cần mạng. |
+| **F-10** | Đính kèm ảnh (hộp Kỷ niệm) | Chọn/chụp 1 ảnh đính kèm hộp, ẩn cùng nội dung đến ngày mở. |
+| **F-11** | Xem chi tiết hộp đã mở | Xem lại nội dung gốc, ảnh, câu hỏi và câu trả lời đã chọn. |
+| **F-12** | Bộ loại hộp với template | Mỗi loại có icon, màu, gợi ý câu hỏi mặc định, placeholder riêng. |
+| **F-13** | Đếm ngược trực quan | Hiển thị "còn X ngày" / progress bar trên mỗi hộp khóa. |
+| **F-14** | Hiệu ứng mở hộp (animation) | Animation "mở nắp hộp" khi mở, tăng cảm giác bất ngờ. |
+| **F-15** | Xóa hộp đang khóa | Cho xóa hộp đã khóa; không cho sửa tiêu đề/nội dung/ảnh/ngày/câu hỏi sau khi khóa. |
+| **F-16** | Lời nhắn khi mở (opening note) | Trường "lời nhắn cho lúc mở", hiển thị ngay đầu màn hình khi mở. |
+| **F-17** | Tìm kiếm & lọc hộp | Lọc theo loại, trạng thái, ngày; tìm theo tiêu đề. |
+| **F-18** | Bảo vệ ứng dụng (App Lock) | Khóa app bằng PIN / sinh trắc học (Face ID / vân tay). |
+| **F-19** | Onboarding & empty state | Hướng dẫn lần đầu; empty state truyền cảm hứng tạo hộp. |
+
+#### Mở rộng — Could have (F-20 → F-25)
+
+| Mã | Tính năng | Mô tả |
+|----|-----------|-------|
+| **F-20** | Chính sách "khóa cứng" tùy chọn | Người dùng chọn cấm sửa/xóa sau khi khóa để giữ tính toàn vẹn trải nghiệm. |
+| **F-21** | Nhiều ảnh / voice note | Đính kèm nhiều ảnh hoặc ghi âm giọng nói vào hộp. |
+| **F-22** | Câu hỏi dạng thang điểm | Ngoài Yes/No, hỗ trợ thang 1–5 sao / mức độ hài lòng. |
+| **F-23** | Thống kê & insight cá nhân | "Bạn đã đạt 7/10 mục tiêu", biểu đồ cảm xúc theo thời gian. |
+| **F-24** | Tùy biến giao diện (theme) | Chọn theme màu / dark mode. |
+| **F-25** | Backup / Export dữ liệu cục bộ | Xuất/nhập file backup để chuyển thiết bị mà không cần cloud. |
+
+#### Ngoài phạm vi — Won't have (v1) (F-26 → F-29)
+
+| Mã | Tính năng | Lý do |
+|----|-----------|-------|
+| **F-26** | Tài khoản & đồng bộ cloud đa thiết bị | Tăng độ phức tạp (backend, auth); MVP offline-first single-device. Cân nhắc v2. |
+| **F-27** | Gửi hộp cho người khác / chia sẻ xã hội | Ý tưởng cốt lõi là "gửi cho chính mình"; chia sẻ làm loãng định vị sản phẩm. |
+| **F-28** | Mở hộp sớm (unlock trả phí) | Phá vỡ tính toàn vẹn của trải nghiệm "khóa thời gian". |
+| **F-29** | Gửi qua email/SMS thực tế trong tương lai | Khác mô hình; cần hạ tầng gửi tin nhắn, ngoài phạm vi MVP. |
+
+> Các tính năng V1 nâng cao (F-30 → F-37) được tóm tắt ở phần đầu mục này và mô tả chi tiết trong [`PRD.md`](./PRD.md).
+
 ---
 
 ## 🛠 Tech Stack
