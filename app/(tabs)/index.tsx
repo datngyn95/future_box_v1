@@ -499,12 +499,14 @@ const chipStyles = StyleSheet.create({
   scroll: { flexGrow: 0 },
   row: { paddingHorizontal: Spacing[4], paddingBottom: Spacing[2], gap: Spacing[2] },
   chip: {
+    height: 36,
     paddingHorizontal: Spacing[4],
-    paddingVertical: Spacing[2],
     borderRadius: Radius.full,
     backgroundColor: ThemeColors.surfaceGlass,
     borderWidth: 1,
     borderColor: ThemeColors.borderGlass,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   chipActive: {
     backgroundColor: ThemeColors.accentSoft,
@@ -512,8 +514,11 @@ const chipStyles = StyleSheet.create({
   },
   label: {
     fontSize: FontSize.sm,
+    lineHeight: Math.round(FontSize.sm * 1.5),
     fontWeight: FontWeight.medium,
     color: Colors.textSecondary,
+    includeFontPadding: false,
+    textAlign: 'center',
   },
   labelActive: { color: ThemeColors.accent },
 });
