@@ -20,6 +20,7 @@
 | Notifications | **expo-notifications** ~0.32.17 (local only, no backend) |
 | Animation | **react-native-reanimated** ~4.1.1 + **react-native-worklets** 0.5.2 |
 | Haptics | **expo-haptics** ~15.0.8 (optional feedback, silent fallback) |
+| Audio | **expo-audio** (hiệu ứng âm thanh mở hộp; imperative `createAudioPlayer`, optional/silent khi chưa có file) |
 | Image picker | **expo-image-picker** ~17.0.11 |
 | File system | **expo-file-system** ~19.0.23 (lưu ảnh vào documentDirectory) |
 | Icons | **@expo/vector-icons** ^15.0.3 (Ionicons) |
@@ -66,7 +67,8 @@
 │   │   └── theme.ts            # Dark theme tokens (uiuxguides.md): colors, text, motion, blur
 │   ├── components/
 │   │   ├── BoxIcon.tsx         # Component icon hộp dùng chung
-│   │   ├── OpeningRitualOverlay.tsx # F-33 animated opening overlay
+│   │   ├── OpeningRitualOverlay.tsx # GĐ2 mở hộp: tối màn + nắp mở chậm ~3s + tap bỏ qua
+│   │   ├── FogRevealOverlay.tsx # GĐ3 mở hộp: vuốt lau sương để lộ nội dung + nút "Hiện luôn"
 │   │   ├── AppLockScreen.tsx   # PIN pad overlay (F-18) — auto-trigger biometric
 │   │   └── OnboardingOverlay.tsx # 3-slide onboarding (F-19) — render như overlay
 │   ├── db/
@@ -74,7 +76,8 @@
 │   │   └── boxRepository.ts    # getAllBoxes(), createBox(), openBox(), deleteBox(), reflection/prediction/teaser mapping
 │   ├── services/
 │   │   ├── notificationService.ts  # scheduleCuriosityNotifications(), computeNotificationMarks(), cancelBoxNotification()
-│   │   ├── hapticsService.ts     # safe expo-haptics wrapper for optional feedback
+│   │   ├── hapticsService.ts     # safe expo-haptics wrapper (light/medium impact, success)
+│   │   ├── soundService.ts     # expo-audio wrapper: playSound/startLoop/stopSound (optional/silent)
 │   │   ├── settingsService.ts  # isAppLockEnabled, isOnboardingDone, LOCK_TIMEOUT_MS (AsyncStorage)
 │   │   └── authService.ts      # setPIN/verifyPIN (SHA-256+salt), biometric (expo-local-authentication)
 │   ├── store/
@@ -83,6 +86,7 @@
 │       └── stats.ts            # computeStats() for Personal Stats (F-36)
 │
 ├── assets/                     # App icons, splash screen
+│   └── sounds/                 # File âm thanh mở hộp (knock/creak/wind/bell) — xem README; chưa có file thì service no-op
 ├── design/                     # Tài liệu thiết kế (screens.md, flows/, database/schema.md, uiuxguides.md)
 ├── PRD.md                      # Product Requirements Document v1.2
 ├── AGENTS.md                   # Hướng dẫn cho AI agents
@@ -182,6 +186,8 @@ function getBoxStatus(box, now): BoxStatus
 - `unlock_date` tối thiểu = today + 1 ngày (theo Q3 PRD, cập nhật 2026-06-20); chặn chọn hôm nay/quá khứ. Preset: 1 ngày, 2 ngày, 1 tháng, 3 tháng, 6 tháng, 1 năm + "Tùy chỉnh". Validate 2 tầng: UI (`app/create-box/[type].tsx`) + data (`validateUnlockDate` trong `src/db/boxRepository.ts`)
 - **Mở hộp** chỉ khi `now >= unlock_date`; guard ở cả UI (`getBoxStatus`) lẫn tầng data (`openBox` dùng SQL `unlock_date <= now AND is_opened = 0`). Màn `box/[id]/detail.tsx` early-return `null` khi `status !== 'opened'` để không lộ content/ảnh/lời nhắn/câu hỏi của hộp khóa
 - **Opening Ritual (F-33)**: `box/[id]/pre-open.tsx` follows persist -> animate -> navigate. `openBox` runs before `OpeningRitualOverlay`; navigation is guarded by `hasNavigatedRef` and a safety timer so animation callbacks cannot hang or double-navigate. Haptics go through `hapticsService` and must remain optional/silent on unsupported devices. The ritual overlay only receives `boxType` and must not render content, image, opening note, reflection answer, or prediction. F-33 does not change DB schema or migrations.
+- **Hiệu ứng mở hộp 3 giai đoạn** (nhánh `feature/open-box-effects`): (1) **Trước khi mở** — `pre-open.tsx`: hộp đứng yên, thỉnh thoảng rung nhẹ theo nhịp NGẪU NHIÊN + tiếng gõ `knock` + haptic; bộ lập lịch tự dừng khi bắt đầu mở (`openingRef`). (2) **Lúc mở** — `OpeningRitualOverlay.tsx`: tối toàn màn, hộp phát sáng mờ, nắp mở rất chậm `OPENING_RITUAL_DURATION_MS = 3000` + tiếng `creak`, có "Chạm để bỏ qua"; vẫn theo guard `hasNavigatedRef` + safety timer của pre-open. (3) **Sau khi mở** — `FogRevealOverlay.tsx`: lớp sương (BlurView + gradient trôi) che nội dung, **vuốt tích lũy** (`PanResponder`, ngưỡng `ACC_THRESHOLD` px) làm sương tan dần, có bóng mờ chiếc hộp + nút "Hiện luôn"; chỉ hiện khi `firstOpen && !revealed`; stagger reveal nội dung (F-14) chỉ chạy sau khi `revealed`. `bell` ngẫu nhiên do fog phát; **tiếng `wind` (loop) do màn `detail` làm chủ** — bật khi vào màn hộp đã mở, tắt khi rời màn — nên âm nền gió liền mạch từ lúc lau sương qua suốt phần nhập "Cảm nhận sau khi mở".
+- **Âm thanh (`soundService` + `expo-audio`)**: optional/silent — `SOUND_SOURCES` hiện trống nên mọi hàm no-op; thêm file vào `assets/sounds/` rồi bỏ comment `require` để bật, KHÔNG cần sửa chỗ gọi. Mọi lời gọi âm thanh phải im lặng an toàn khi chưa có file / thiết bị không hỗ trợ (giống haptics).
 - **Post-open Reflection (F-34)**: reflection note + rating 1-5 are optional and editable only after open. UI renders only in opened detail; repository writes are guarded by `BOX_NOT_OPENED`. Reflection is independent from Yes/No answer and original content remains read-only.
 - **Create Next Box CTA (F-35)**: opened detail ends with inline CTA "Tạo hộp mới cho tương lai" -> `/create-box`; keep EmpathyCard CTA for the "No" answer path.
 - **Personal Stats (F-36)**: `app/stats.tsx` is read-only and computes all values from `state.boxes` through `src/utils/stats.ts` + `getBoxStatus`. F-36 has no DB migration, no notification changes, and no data mutation. Stats must not render locked box content, image, opening note, reflection note text, reflection answer details, prediction text, or teaser text; only counts plus public metadata for the next locked box (title, type, unlock date, countdown). Empty state navigates to `/create-box`.

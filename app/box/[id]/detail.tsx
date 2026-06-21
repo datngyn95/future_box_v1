@@ -38,6 +38,8 @@ import { getBoxTypeConfig } from '../../../src/constants/boxTypes';
 import { BoxIcon } from '../../../src/components/BoxIcon';
 import { getBoxStatus, useBoxStore } from '../../../src/store/boxStore';
 import { answerReflectionQuestion, upsertReflectionNote } from '../../../src/db/boxRepository';
+import { FogRevealOverlay } from '../../../src/components/FogRevealOverlay';
+import { startLoop, stopSound } from '../../../src/services/soundService';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -244,6 +246,9 @@ export default function OpenedBoxDetailScreen() {
 
   const firstOpen = isFirstOpen === '1';
 
+  // GĐ3: khi mở lần đầu, nội dung bị che bởi lớp sương cho tới khi vuốt lau xong.
+  const [revealed, setRevealed] = useState(!firstOpen);
+
   // Reflection answer state
   const [localAnswer, setLocalAnswer] = useState<'yes' | 'no' | null>(
     box?.reflectionAnswer ?? null,
@@ -275,6 +280,14 @@ export default function OpenedBoxDetailScreen() {
     }
   }, [box, router, status]);
 
+  // Giữ tiếng gió rít làm âm nền suốt màn detail (gồm phần nhập Cảm nhận),
+  // bật khi vào màn hộp đã mở và tắt khi rời màn. (no-op nếu chưa có file)
+  useEffect(() => {
+    if (status !== 'opened') return;
+    startLoop('wind', { volume: 0.5 });
+    return () => stopSound('wind');
+  }, [box?.id, status]);
+
   useEffect(() => {
     setLocalAnswer(box?.reflectionAnswer ?? null);
     setShowAnswerButtons(box?.reflectionAnswer === null || box?.reflectionAnswer === undefined);
@@ -304,7 +317,9 @@ export default function OpenedBoxDetailScreen() {
   const section4TransY = useSharedValue(firstOpen ? 24 : 0);
 
   useEffect(() => {
-    const base = firstOpen ? 300 : 0;
+    // Chỉ stagger-reveal nội dung khi đã lau xong sương (GĐ3).
+    if (!revealed) return;
+    const base = 0;
     const dur = 450;
     const ease = Easing.out(Easing.quad);
     section1Opacity.value = withDelay(base, withTiming(1, { duration: dur }));
@@ -317,7 +332,7 @@ export default function OpenedBoxDetailScreen() {
       section3TransY.value = withDelay(base + 300, withTiming(0, { duration: dur, easing: ease }));
       section4TransY.value = withDelay(base + 450, withTiming(0, { duration: dur, easing: ease }));
     }
-  }, []);
+  }, [revealed]);
 
   const s1Style = useAnimatedStyle(() => ({
     opacity: section1Opacity.value,
@@ -702,6 +717,14 @@ export default function OpenedBoxDetailScreen() {
             router.push('/create-box');
           }}
           onDismiss={() => setShowEmpathy(false)}
+        />
+      )}
+
+      {/* ── Fog reveal overlay (GĐ3 — vuốt để lau sương) ── */}
+      {firstOpen && !revealed && (
+        <FogRevealOverlay
+          boxType={box.boxType}
+          onRevealed={() => setRevealed(true)}
         />
       )}
     </View>
