@@ -535,6 +535,7 @@ export default function HomeScreen() {
   const [showSearch, setShowSearch] = useState(false);
   const [searchText, setSearchText] = useState('');
   const [activeFilter, setActiveFilter] = useState<FilterType>('all');
+  const [showAllOpened, setShowAllOpened] = useState(false);
 
   // Tính trạng thái realtime cho mỗi hộp
   const allBoxes = state.boxes;
@@ -585,6 +586,9 @@ export default function HomeScreen() {
   // FAB hide/show on scroll direction
   const lastScrollY = useSharedValue(0);
   const fabTranslateY = useSharedValue(0);
+  // Khoảng dịch đủ để FAB khuất hẳn dưới mép màn (gồm cả safe-area inset),
+  // nếu không FAB chỉ trượt một phần và bị "che mất một nửa" ở mép dưới.
+  const fabHiddenOffset = FAB_SIZE + FAB_BOTTOM_OFFSET + insets.bottom + 16;
 
   const scrollHandler = useAnimatedScrollHandler({
     onScroll: (event) => {
@@ -592,7 +596,7 @@ export default function HomeScreen() {
       const diff = currentY - lastScrollY.value;
 
       if (diff > 8 && currentY > 60) {
-        fabTranslateY.value = withTiming(FAB_SIZE + FAB_BOTTOM_OFFSET + 16, {
+        fabTranslateY.value = withTiming(fabHiddenOffset, {
           duration: 200,
           easing: Easing.out(Easing.quad),
         });
@@ -762,7 +766,7 @@ export default function HomeScreen() {
                 count={openedBoxes.length}
                 badgeColor={Colors.sectionOpened}
               />
-              {openedBoxes.slice(0, 3).map((box) => (
+              {(showAllOpened ? openedBoxes : openedBoxes.slice(0, 3)).map((box) => (
                 <OpenedCard
                   key={box.id}
                   box={box}
@@ -770,9 +774,19 @@ export default function HomeScreen() {
                 />
               ))}
               {openedBoxes.length > 3 && (
-                <TouchableOpacity style={styles.seeMoreButton} activeOpacity={0.7}>
-                  <Text style={styles.seeMoreText}>Xem thêm {openedBoxes.length - 3} hộp</Text>
-                  <Ionicons name="chevron-down" size={16} color={ThemeColors.accent} />
+                <TouchableOpacity
+                  style={styles.seeMoreButton}
+                  activeOpacity={0.7}
+                  onPress={() => setShowAllOpened((prev) => !prev)}
+                >
+                  <Text style={styles.seeMoreText}>
+                    {showAllOpened ? 'Thu gọn' : `Xem thêm ${openedBoxes.length - 3} hộp`}
+                  </Text>
+                  <Ionicons
+                    name={showAllOpened ? 'chevron-up' : 'chevron-down'}
+                    size={16}
+                    color={ThemeColors.accent}
+                  />
                 </TouchableOpacity>
               )}
             </View>
