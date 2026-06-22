@@ -12,14 +12,13 @@ import {
   type AudioPlayer,
 } from 'expo-audio';
 
-export type SoundName = 'knock' | 'creak' | 'wind' | 'bell';
+export type SoundName = 'knock' | 'creak' | 'wind';
 
 // 👉 Thêm file âm thanh tại đây (bỏ comment khi đã đặt file vào assets/sounds/):
 const SOUND_SOURCES: Partial<Record<SoundName, number>> = {
   knock: require('../../assets/sounds/knock.mp3'),  // GĐ1: tiếng gõ cốc cốc
   creak: require('../../assets/sounds/creak.mp3'),  // GĐ2: tiếng kẹt cửa gỗ
   wind:  require('../../assets/sounds/wind.mp3'),   // GĐ3: gió rít nền (loop)
-  //bell:  require('../../assets/sounds/bell.mp3'),   // GĐ3: tiếng chuông nhỏ
 };
 
 const players: Partial<Record<SoundName, AudioPlayer>> = {};

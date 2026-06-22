@@ -1,7 +1,9 @@
 // GĐ3: Lớp sương che nội dung sau khi mở hộp.
 // Người dùng VUỐT để "lau sương" — vuốt càng nhiều, sương tan càng nhiều cho tới
-// khi lộ nội dung. Phía sau sương có bóng mờ của chiếc hộp. Có nút "Hiện luôn".
-// Âm nền: gió rít nhẹ (loop), thỉnh thoảng kèm chuông nhỏ (no-op khi chưa có file).
+// khi lộ nội dung. Sương gồm nhiều lớp tan ở tốc độ khác nhau: lớp dày tan trước,
+// vài dải sương mỏng còn vương lại trôi ngang qua nội dung (đỉnh núi ẩn hiện trong
+// sương). Phía sau sương có bóng mờ của chiếc hộp. Có nút "Hiện luôn".
+// Âm nền: gió rít nhẹ (loop) do màn detail làm chủ.
 
 import React, { useEffect, useMemo, useRef } from 'react';
 import {
@@ -16,8 +18,12 @@ import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import Animated, {
   Easing,
+  interpolate,
+  Extrapolation,
   runOnJS,
+  useAnimatedReaction,
   useAnimatedStyle,
+  useDerivedValue,
   useSharedValue,
   withRepeat,
   withTiming,
@@ -29,7 +35,6 @@ import { FontSize, FontWeight } from '../constants/typography';
 import { BoxType } from '../types/box';
 import { BoxIcon } from './BoxIcon';
 import { hapticImpactLight, hapticSuccess } from '../services/hapticsService';
-import { playSound } from '../services/soundService';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -42,21 +47,28 @@ interface FogRevealOverlayProps {
 }
 
 export function FogRevealOverlay({ boxType, onRevealed }: FogRevealOverlayProps) {
-  const progress = useSharedValue(0); // 0 = đầy sương, 1 = sạch
+  // target: tiến độ "thô" cập nhật trực tiếp theo ngón tay (0 = đầy sương, 1 = sạch).
+  // progress: bám theo target có độ trễ → vuốt mượt, không giật cục.
+  const target = useSharedValue(0);
+  const progress = useDerivedValue(() =>
+    withTiming(target.value, { duration: 260, easing: Easing.out(Easing.cubic) }),
+  );
+
+  // Các lớp sương trôi ở tốc độ/nhịp khác nhau + nhịp "thở" cho sống động.
   const drift1 = useSharedValue(0);
   const drift2 = useSharedValue(0);
+  const drift3 = useSharedValue(0);
+  const breathe = useSharedValue(0);
 
   const finishedRef = useRef(false);
   const completingRef = useRef(false);
   const accRef = useRef(0);
   const lastPointRef = useRef<{ x: number; y: number } | null>(null);
-  const bellTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const reveal = () => {
     if (finishedRef.current) return;
     finishedRef.current = true;
     // Tiếng gió do màn detail làm chủ — KHÔNG tắt ở đây để âm nền liền mạch.
-    if (bellTimerRef.current) clearTimeout(bellTimerRef.current);
     void hapticSuccess();
     onRevealed();
   };
@@ -64,20 +76,25 @@ export function FogRevealOverlay({ boxType, onRevealed }: FogRevealOverlayProps)
   const completeReveal = () => {
     if (completingRef.current) return;
     completingRef.current = true;
-    progress.value = withTiming(1, { duration: 380, easing: Easing.out(Easing.quad) }, (done) => {
-      if (done) runOnJS(reveal)();
-    });
+    target.value = 1;
   };
 
   const bump = (amount: number) => {
     if (completingRef.current) return;
     accRef.current += amount;
-    const p = Math.min(0.97, accRef.current / ACC_THRESHOLD);
-    progress.value = p;
+    target.value = Math.min(1, accRef.current / ACC_THRESHOLD);
     if (accRef.current >= ACC_THRESHOLD) {
       completeReveal();
     }
   };
+
+  // Sương tan hết → lộ nội dung. Bắt khi progress thực sự gần 1 để khớp animation.
+  useAnimatedReaction(
+    () => progress.value,
+    (v) => {
+      if (v >= 0.99) runOnJS(reveal)();
+    },
+  );
 
   const panResponder = useMemo(
     () =>
@@ -112,55 +129,109 @@ export function FogRevealOverlay({ boxType, onRevealed }: FogRevealOverlayProps)
   );
 
   useEffect(() => {
-    // Sương trôi nhẹ qua lại
-    drift1.value = withRepeat(withTiming(1, { duration: 7000, easing: Easing.inOut(Easing.sin) }), -1, true);
-    drift2.value = withRepeat(withTiming(1, { duration: 9000, easing: Easing.inOut(Easing.sin) }), -1, true);
-
-    // Chuông nhỏ thỉnh thoảng (gió rít do màn detail làm chủ)
-    const scheduleBell = () => {
-      bellTimerRef.current = setTimeout(() => {
-        if (finishedRef.current) return;
-        playSound('bell', { volume: 0.6 });
-        scheduleBell();
-      }, 3500 + Math.random() * 4000);
-    };
-    scheduleBell();
-
-    return () => {
-      if (bellTimerRef.current) clearTimeout(bellTimerRef.current);
-    };
+    // Sương trôi ngang qua lại ở các tốc độ lệch nhau cho tự nhiên.
+    drift1.value = withRepeat(withTiming(1, { duration: 8200, easing: Easing.inOut(Easing.sin) }), -1, true);
+    drift2.value = withRepeat(withTiming(1, { duration: 11000, easing: Easing.inOut(Easing.sin) }), -1, true);
+    drift3.value = withRepeat(withTiming(1, { duration: 6200, easing: Easing.inOut(Easing.sin) }), -1, true);
+    breathe.value = withRepeat(withTiming(1, { duration: 5200, easing: Easing.inOut(Easing.sin) }), -1, true);
   }, []);
 
-  // Sương tan dần theo progress
-  const fogStyle = useAnimatedStyle(() => ({ opacity: 1 - progress.value }));
+  // --- Các lớp sương: tan ở khoảng progress khác nhau để tạo chiều sâu ---
+
+  // Lớp blur nền (frosted) — tan sớm-vừa.
+  const blurLayerStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(progress.value, [0, 0.7], [1, 0], Extrapolation.CLAMP),
+  }));
+
+  // Lớp sương DÀY (nền) — tan sớm nhất, kèm thở nhẹ + trôi chậm.
+  const denseFogStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(progress.value, [0, 0.5], [0.92, 0], Extrapolation.CLAMP),
+    transform: [
+      { translateX: -50 + drift1.value * 100 },
+      { translateY: breathe.value * 14 },
+      { scale: 1.08 + breathe.value * 0.06 },
+    ],
+  }));
+
+  // Lớp sương GIỮA — tan ở giữa, trôi ngược chiều.
+  const midFogStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(progress.value, [0.08, 0.82], [0.7, 0], Extrapolation.CLAMP),
+    transform: [
+      { translateX: 55 - drift2.value * 110 },
+      { translateY: -breathe.value * 10 },
+      { scale: 1.1 - breathe.value * 0.05 },
+    ],
+  }));
+
+  // Dải sương MỎNG phía trên — vương lại lâu, trôi nhanh (đỉnh núi ẩn hiện).
+  const wispTopStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(progress.value, [0.3, 1], [0.62, 0], Extrapolation.CLAMP),
+    transform: [
+      { translateX: -70 + drift3.value * 140 },
+      { translateY: breathe.value * 8 },
+    ],
+  }));
+
+  // Dải sương MỎNG phía dưới — vương lại lâu nhất, trôi ngược.
+  const wispBottomStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(progress.value, [0.42, 1], [0.58, 0], Extrapolation.CLAMP),
+    transform: [
+      { translateX: 80 - drift1.value * 150 },
+      { translateY: -breathe.value * 9 },
+    ],
+  }));
+
+  // Bóng hộp phía sau — mờ dần khi nội dung thật lộ ra.
   const silhouetteStyle = useAnimatedStyle(() => ({
-    // bóng hộp rõ hơn một chút giữa chừng rồi mờ đi khi sắp lộ nội dung
-    opacity: (1 - progress.value) * 0.5,
+    opacity: interpolate(progress.value, [0, 0.72], [0.5, 0], Extrapolation.CLAMP),
+    transform: [{ scale: interpolate(progress.value, [0, 1], [1, 1.06], Extrapolation.CLAMP) }],
   }));
-  const drift1Style = useAnimatedStyle(() => ({
-    transform: [{ translateX: -40 + drift1.value * 80 }],
+
+  const hintStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(progress.value, [0, 0.5], [0.9, 0], Extrapolation.CLAMP),
   }));
-  const drift2Style = useAnimatedStyle(() => ({
-    transform: [{ translateX: 40 - drift2.value * 80 }],
-  }));
-  const hintStyle = useAnimatedStyle(() => ({ opacity: (1 - progress.value) * 0.85 }));
 
   return (
-    <Animated.View style={[styles.root, fogStyle]} {...panResponder.panHandlers}>
-      <BlurView intensity={70} tint="dark" style={StyleSheet.absoluteFill} />
+    <View style={styles.root} {...panResponder.panHandlers}>
+      {/* Blur nền */}
+      <Animated.View style={[StyleSheet.absoluteFill, blurLayerStyle]}>
+        <BlurView intensity={70} tint="dark" style={StyleSheet.absoluteFill} />
+      </Animated.View>
 
-      {/* Lớp sương màu + chuyển động trôi */}
-      <Animated.View style={[StyleSheet.absoluteFill, drift1Style]}>
+      {/* Lớp sương dày (nền) */}
+      <Animated.View style={[StyleSheet.absoluteFill, denseFogStyle]}>
         <LinearGradient
-          colors={['rgba(210,214,224,0.78)', 'rgba(180,186,200,0.62)', 'rgba(150,156,172,0.78)']}
+          colors={['rgba(214,218,228,0.85)', 'rgba(184,190,204,0.72)', 'rgba(158,164,180,0.85)']}
           style={StyleSheet.absoluteFill}
         />
       </Animated.View>
-      <Animated.View style={[StyleSheet.absoluteFill, drift2Style]}>
+
+      {/* Lớp sương giữa (chéo, trôi ngược) */}
+      <Animated.View style={[StyleSheet.absoluteFill, midFogStyle]}>
         <LinearGradient
-          colors={['rgba(255,255,255,0.18)', 'rgba(200,205,216,0.10)', 'rgba(255,255,255,0.18)']}
+          colors={['rgba(255,255,255,0.55)', 'rgba(206,211,222,0.22)', 'rgba(255,255,255,0.5)']}
+          start={{ x: 0, y: 0.2 }}
+          end={{ x: 1, y: 0.9 }}
+          style={StyleSheet.absoluteFill}
+        />
+      </Animated.View>
+
+      {/* Dải sương mỏng phía trên */}
+      <Animated.View style={[styles.wispTop, wispTopStyle]} pointerEvents="none">
+        <LinearGradient
+          colors={['rgba(255,255,255,0.7)', 'rgba(255,255,255,0.25)', 'rgba(255,255,255,0)']}
           start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
+          end={{ x: 0, y: 1 }}
+          style={StyleSheet.absoluteFill}
+        />
+      </Animated.View>
+
+      {/* Dải sương mỏng phía dưới */}
+      <Animated.View style={[styles.wispBottom, wispBottomStyle]} pointerEvents="none">
+        <LinearGradient
+          colors={['rgba(255,255,255,0)', 'rgba(255,255,255,0.28)', 'rgba(255,255,255,0.72)']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 0, y: 1 }}
           style={StyleSheet.absoluteFill}
         />
       </Animated.View>
@@ -185,7 +256,7 @@ export function FogRevealOverlay({ boxType, onRevealed }: FogRevealOverlayProps)
           <Text style={styles.revealBtnText}>Hiện luôn</Text>
         </Pressable>
       </View>
-    </Animated.View>
+    </View>
   );
 }
 
@@ -205,6 +276,20 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  wispTop: {
+    position: 'absolute',
+    top: -SCREEN_HEIGHT * 0.05,
+    left: 0,
+    right: 0,
+    height: SCREEN_HEIGHT * 0.45,
+  },
+  wispBottom: {
+    position: 'absolute',
+    bottom: -SCREEN_HEIGHT * 0.05,
+    left: 0,
+    right: 0,
+    height: SCREEN_HEIGHT * 0.5,
   },
   hintWrap: {
     position: 'absolute',
