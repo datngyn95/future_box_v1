@@ -12,7 +12,6 @@ import {
   Pressable,
   Switch,
   Alert,
-  KeyboardAvoidingView,
   Platform,
   Dimensions,
   Image,
@@ -516,37 +515,37 @@ export default function CreateBoxFormScreen() {
   const headerTint = config.bgColor;
 
   return (
-    <KeyboardAvoidingView
-      style={styles.root}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={0}
-    >
-      <View style={{ flex: 1, backgroundColor: Colors.background }}>
-        {/* ── Header ── */}
-        <View style={[styles.header, { paddingTop: insets.top + Spacing[2], backgroundColor: headerTint }]}>
-          <Pressable onPress={handleBack} style={styles.backButton} hitSlop={8}>
-            <Ionicons name="arrow-back" size={22} color={config.color} />
-          </Pressable>
-          <View style={styles.headerCenter}>
-            <Ionicons name={config.iconName as keyof typeof Ionicons.glyphMap} size={16} color={config.color} />
-            <Text style={[styles.headerTitle, { color: config.color }]}>
-              Hộp {config.label}
-            </Text>
-          </View>
-          <View style={{ width: 40 }} />
+    <View style={[styles.root, { backgroundColor: Colors.background }]}>
+      {/* ── Header (ngoài KeyboardAvoidingView, luôn cố định) ── */}
+      <View style={[styles.header, { paddingTop: insets.top + Spacing[2], backgroundColor: headerTint }]}>
+        <Pressable onPress={handleBack} style={styles.backButton} hitSlop={8}>
+          <Ionicons name="arrow-back" size={22} color={config.color} />
+        </Pressable>
+        <View style={styles.headerCenter}>
+          <Ionicons name={config.iconName as keyof typeof Ionicons.glyphMap} size={16} color={config.color} />
+          <Text style={[styles.headerTitle, { color: config.color }]}>
+            Hộp {config.label}
+          </Text>
         </View>
+        <View style={{ width: 40 }} />
+      </View>
 
-        {/* ── Scrollable Form ── */}
-        <ScrollView
-          ref={scrollRef}
-          style={styles.scrollView}
-          contentContainerStyle={[
-            styles.scrollContent,
-            { paddingBottom: insets.bottom + 96 + Spacing[4] },
-          ]}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
+      {/* ── Scrollable Form ──
+          Dùng automaticallyAdjustKeyboardInsets (iOS) để bàn phím tự thêm
+          inset, cuộn trường đang gõ lên trên bàn phím. Tránh lồng
+          KeyboardAvoidingView (gây co/đẩy vỡ layout với footer dính). */}
+      <ScrollView
+        ref={scrollRef}
+        style={styles.scrollView}
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingBottom: insets.bottom + 96 + Spacing[4] },
+        ]}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
+        automaticallyAdjustKeyboardInsets
+        showsVerticalScrollIndicator={false}
+      >
           {/* Title field */}
           <AnimatedInput
             label="TIÊU ĐỀ"
@@ -780,32 +779,31 @@ export default function CreateBoxFormScreen() {
           {dateError && (
             <Text style={styles.errorText}>{dateErrorMessage}</Text>
           )}
-        </ScrollView>
+      </ScrollView>
 
-        {/* ── Sticky Lock Button ── */}
-        <View
-          style={[
-            styles.stickyButtonContainer,
-            {
-              paddingBottom: insets.bottom + Spacing[3],
-              backgroundColor: Colors.background,
-            },
-          ]}
-        >
-          <View style={styles.stickyGradientSeparator} />
+      {/* ── Sticky Lock Button (ghim đáy màn, ngoài vùng cuộn) ── */}
+      <View
+        style={[
+          styles.stickyButtonContainer,
+          {
+            paddingBottom: insets.bottom + Spacing[3],
+            backgroundColor: Colors.background,
+          },
+        ]}
+      >
+        <View style={styles.stickyGradientSeparator} />
 
-          <Animated.View style={lockBtnStyle}>
-            <Pressable
-              onPress={handleLockPress}
-              style={[styles.lockButton, { backgroundColor: config.color }]}
-            >
-              <Ionicons name="lock-closed" size={20} color={Colors.textOnColor} style={{ marginRight: Spacing[2] }} />
-              <Text style={styles.lockButtonText}>Khóa hộp</Text>
-            </Pressable>
-          </Animated.View>
-        </View>
+        <Animated.View style={lockBtnStyle}>
+          <Pressable
+            onPress={handleLockPress}
+            style={[styles.lockButton, { backgroundColor: config.color }]}
+          >
+            <Ionicons name="lock-closed" size={20} color={Colors.textOnColor} style={{ marginRight: Spacing[2] }} />
+            <Text style={styles.lockButtonText}>Khóa hộp</Text>
+          </Pressable>
+        </Animated.View>
       </View>
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 
